@@ -1,2 +1,4 @@
 # MVC ActiveRecord Entity Generator (by senCille)
-Datasets properties to generate MVCActiveRecord Descendants classes and more. 
+Project that generate MVCActiveRecord Descendants from DB Information and more.
+
+# Woring in progres... 
