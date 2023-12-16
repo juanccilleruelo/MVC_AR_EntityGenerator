@@ -12,13 +12,13 @@ uses
   FireDAC.VCLUI.Wait, FireDAC.Comp.UI, FireDAC.Phys.IBBase, FireDAC.Phys.FB, FireDAC.Comp.DataSet, FireDAC.Comp.Client,
   FireDAC.Phys.ODBCBase, FireDAC.Phys.FBDef, FireDAC.Phys.MySQLDef, FireDAC.Phys.MySQL, FireDAC.Phys.PGDef,
   FireDAC.Phys.PG, FireDAC.Phys.IBDef, FireDAC.Phys.IB, FireDAC.Stan.ExprFuncs, FireDAC.Phys.SQLiteDef, FireDAC.Phys.SQLite,
-  FireDAC.Phys.SQLiteWrapper.Stat, FireDAC.Moni.FlatFile,
+  FireDAC.Phys.SQLiteWrapper.Stat, FireDAC.Moni.FlatFile, FireDAC.Phys.SQLiteWrapper,
   JsonDataObjects, System.Actions,
   LoggerPro.FileAppender,
   LoggerPro.VCLListBoxAppender,
   LoggerPro,
   FireDAC.Moni.RemoteClient, FireDAC.Moni.Custom, FireDAC.Moni.Base,
-  ARGeneratorController;
+  ARGeneratorController, FireDAC.Phys.MSAcc, FireDAC.Phys.MSAccDef;
 
 type
   TMain = class(TForm)
@@ -35,8 +35,8 @@ type
     BtnSaveProject: TButton;
     ProjectOpenDialog: TFileOpenDialog;
     MainMenu1: TMainMenu;
-    ActionList1: TActionList;
-    ActionLoadProject: TAction;
+    ActionList: TActionList;
+    ActionOpenProject: TAction;
     ActionSaveProject: TAction;
     ActionSaveProjectAs: TAction;
     File1: TMenuItem;
@@ -45,12 +45,11 @@ type
     Saveprojectas1: TMenuItem;
     Exit1: TMenuItem;
     N1: TMenuItem;
-    ActionRefreshTableList: TAction;
+    ActionRefreshDBInfo: TAction;
     DialogSaveProject: TFileSaveDialog;
     ActionNewProject: TAction;
     NewProject1: TMenuItem;
     ImageListMainMenu: TImageList;
-    ImageListButtons: TImageList;
     Entities1: TMenuItem;
     RefreshCatalog1: TMenuItem;
     RefreshTableList1: TMenuItem;
@@ -95,7 +94,7 @@ type
     CheckBoxClassAsAbstract: TCheckBox;
     Panel10: TPanel;
     btnGetTables: TButton;
-    BtnEditConnection: TButton;
+    BtnConnectDatabase: TButton;
     PageControl: TPageControl;
     TabSheetTables: TTabSheet;
     Splitter2: TSplitter;
@@ -105,13 +104,14 @@ type
     TabSheetSource: TTabSheet;
     MemoOutputCode: TMemo;
     PanelSource: TPanel;
+    FDSQLiteBackup1: TFDSQLiteBackup;
+    ActionConnectDatabase: TAction;
     procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
-    procedure ActionLoadProjectExecute(Sender: TObject);
+    procedure ActionOpenProjectExecute(Sender: TObject);
     procedure ActionSaveProjectExecute(Sender: TObject);
     procedure ActionSaveProjectAsExecute(Sender: TObject);
     procedure ActionNewProjectExecute(Sender: TObject);
-    procedure BtnEditConnectionClick(Sender: TObject);
     procedure GridTablesDblClick(Sender: TObject);
     procedure GridFieldsDblClick(Sender: TObject);
     procedure ActionSaveProjectUpdate(Sender: TObject);
@@ -121,34 +121,33 @@ type
     procedure ActionGenerateAllExecute(Sender: TObject);
     procedure ActionGenerateCurrentUpdate(Sender: TObject);
     procedure ActionGenerateAllUpdate(Sender: TObject);
+    procedure ActionConnectDatabaseExecute(Sender: TObject);
+    procedure ActionConnectDatabaseUpdate(Sender: TObject);
+    procedure ActionRefreshDBInfoExecute(Sender: TObject);
+    procedure ActionRefreshDBInfoUpdate(Sender: TObject);
   private
-    FProjectName     :string;
-    FModified        :Boolean;
-
-    FConfig          :TJSONObject;
-    FHistoryFileName :string;
-    Log              :ILogWriter;
-    Controller       :TARGeneratorController; {Controller of this project}
+    FProjectName :string;
+    FModified    :Boolean; {Changes not saved on disk}
+    Log          :ILogWriter;
+    Controller   :TARGeneratorController; {Controller of this project}
     procedure ResetUI;
-    {***} procedure LoadProjectFromFile;
-    {***} procedure SaveProject;
-    procedure SetProjectName(const Value: String);
   public
-    property ProjectName :string read FProjectName write SetProjectName;
+    property ProjectName :string read FProjectName write FProjectName;
   end;
 
 var
   Main: TMain;
 
 const
-   CONFIG_FILE          = 'lastConfig.json';
-   DEFAULT_PROJECT_NAME = 'EntitiesDB.entgen';
-   LOG_TAG              = 'generator';
+   DEFAULT_PROJECT_NAME   = 'EntitiesDB.entgen';
+   LOG_TAG                = 'generator';
+   NOT_SAVED_PROJECT_NAME = 'Not Saved';
 
 implementation
 
 uses System.IOUtils,
      System.TypInfo,
+     System.UITypes,
      System.DateUtils,
      LoggerPro.GlobalLogger,
      System.Generics.Collections,
@@ -173,50 +172,23 @@ begin
       TVCLListBoxAppender.Create(lbLog, 2000, UILogFormat)
    ]);
 
-   FConfig          := TJSONObject.Create;
-   FHistoryFileName := TPath.Combine(TPath.GetDocumentsPath, TPath.GetFileNameWithoutExtension(ParamStr(0)) + '.history');
-
-   Log.Info('Selecting ConnectionDef: ' + DBConnection.Params.Database, LOG_TAG);
-   //DBConnection.Open;
-
    ARDB.DriverName := 'SQLite';
    ARDB.Params.Add('OpenMode = CreateUTF8');
    ARDB.Params.Add('CharacterSet = UTF8');
 
-   //Controller.ProjectName := 'ARGenerator';
-   //ARDB.Params.Database   := Controller.DBName;
-
    Controller := TARGeneratorController.Create;
-   Controller.Log := Log;
+   Controller.Log        := Log;
+   Controller.ARDB       := ARDB;
 
-   (*Creation of the Database
-   Controller.Connection := ARDB;
-   Controller.OpenDB;
-
-   Controller.PopulateDB(DBConnection, RadioGroupFieldNameFormatting.ItemIndex = 1);
-   ARDB.Open;
-
-   dsTables.Open;
-   dsFields.Open;
-   {Fill with data from Database}
-   dsTables.DisableControls;
-   dsFields.DisableControls;
-   try
-      Controller.FillViewData(dsTables, dsFields);
-      TabSheetTables.Caption := 'Tables (' + dsTables.RecordCount.ToString + ')';
-   finally
-      dsTables.EnableControls;
-      dsFields.EnableControls;
-   end;
-
-   dsTables.Open;      *)
-
-   ActionRefreshTableList.Execute;
+   {Initializes the Connection to avoid the design-time values}
+   DBConnection.Params.Text := '';
+   DBConnection.DriverName  := '';
+   DBConnection.LoginPrompt := False;
+   Controller.Connection := DBConnection;
 end;
 
 procedure TMain.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
-   FConfig.Free;
    Controller.Free;
 end;
 
@@ -237,6 +209,7 @@ begin
          dsTables.Edit;
          dsTablesCLASS_NAME.AsString := EditTable.ClassName;
          dsTables.Post;
+         Controller.SaveCurrentViewTableToMemory(dsTables);
          FModified := True;
       end;
    finally
@@ -253,18 +226,25 @@ begin
    GridTables.Columns[0].Color := clBtnShadow;
 end;
 
-(*mbOK       mrOk
-mbCancel   mrCancel
-mbYes      mrYes
-mbNo       mrNo
-mbAbort    mrAbort
-mbRetry    mrRetry
-mbIgnore   mrIgnore
-mbAll      mrAll
-mbNoToAll  mrNoToAll
-mbYesToAll mrYesToAll
-mbClose    mrClose
-*)
+procedure TMain.ActionConnectDatabaseExecute(Sender: TObject);
+var FDConnEditor :TfrmFDGUIxFormsConnEdit;
+begin
+   FDConnEditor := TfrmFDGUIxFormsConnEdit.Create(Self);
+   try
+      if FDConnEditor.Execute(DBConnection, 'Connect to Database', nil) then begin
+         DBConnection.Open; {No exception management. The user is a programmer. Don't forget it!}
+         Controller.SaveDBConnectionInfo();
+         ActionRefreshDBInfo.Execute;
+      end;
+   finally
+      FDConnEditor.Free;
+   end;
+end;
+
+procedure TMain.ActionConnectDatabaseUpdate(Sender: TObject);
+begin
+   ActionConnectDatabase.Enabled := ARDB.Connected;
+end;
 
 procedure TMain.ActionGenerateAllExecute(Sender: TObject);
 var FileName    :string;
@@ -284,60 +264,59 @@ begin
       OverwriteIt := False;
       dsTables.First;
       while not dsTables.EOF do begin
-          {Generate the code for each table in MemoOutputCode}
-          Controller.GenerateCode(MemoOutputCode.Lines,
-                                  dsTablesTABLE_NAME.AsString,
-                                  dsTablesCLASS_NAME.AsString,
-                                  dsFields,
-                                  DBConnection,
-                                  CheckBoxClassAsAbstract.Checked,
-                                  RadioGroupNameCase.Items[RadioGroupNameCase.ItemIndex],
-                                  CheckBoxWithMappingRegistry.Checked,
-                                  RadioGroupFieldNameFormatting.ItemIndex = 1);
-          Log.Info('Code for table '+dsTablesTABLE_NAME.AsString +' has been generated', LOG_TAG);
+         {Generate the code for each table in MemoOutputCode}
+         Controller.GenerateCode(MemoOutputCode.Lines,
+                                 dsTablesTABLE_NAME.AsString,
+                                 dsTablesCLASS_NAME.AsString,
+                                 dsFields,
+                                 CheckBoxClassAsAbstract.Checked,
+                                 RadioGroupNameCase.Items[RadioGroupNameCase.ItemIndex],
+                                 CheckBoxWithMappingRegistry.Checked,
+                                 RadioGroupFieldNameFormatting.ItemIndex = 1);
+         Log.Info('Code for table '+dsTablesTABLE_NAME.AsString +' has been generated', LOG_TAG);
 
-          // Generates the FileName where to save the code
-          FileName := dsTablesDEPLOY_PATH.AsString + PathDelim + Controller.GetUnitName(dsTABLESCLASS_NAME.AsString) + '.pas';
-          // Verify if the file exists previously
-          if FileExists(FileName) then begin
-             if not OverwriteIt then begin
-                case MessageDlg(Format('The file "%s" preiously exists. Overwrite it?', [FileName]), mtConfirmation, [mbYes, mbYesToAll, mbNo, mbCancel], 0) of
-                   mrYes: begin
-                      MemoOutputCode.Lines.SaveToFile(FileName);
-                      Inc(EntityCount);
-                      Log.Info('File '+FileName+' rewrited.', LOG_TAG);
-                   end;
-                   mrYesToAll: begin
-                      MemoOutputCode.Lines.SaveToFile(FileName); {Overwrite current and all the next}
-                      Inc(EntityCount);
-                      OverwriteIt := True;
-                      Log.Info('All the next file are going to be overwrite if them exists previously.', LOG_TAG);
-                   end;
-                   mrNo: begin // Do not overwrite. Continue with the next iteration
-                      Log.Info('File '+FileName+' has not been generated.', LOG_TAG);
-                      dsTables.Next;
-                      Continue;
-                   end;
-                   mrCancel: begin// Abortar el proceso de guardado
-                      Log.Info('Operation of save file canceled by the user', LOG_TAG);
-                      Break;
-                   end;
-                end;
-             end
-             else begin
-                // Save the file because the user decided to overwrite all
-                MemoOutputCode.Lines.SaveToFile(FileName);
-                Inc(EntityCount);
-                Log.Info('File '+FileName+' has been saved', LOG_TAG);
-             end;
-          end
-          else begin
-             // Save the file without issues
-             MemoOutputCode.Lines.SaveToFile(FileName);
-             Inc(EntityCount);
-             Log.Info('File '+FileName+' has been saved', LOG_TAG);
-          end;
-          dsTables.Next;
+         // Generates the FileName where to save the code
+         FileName := dsTablesDEPLOY_PATH.AsString + PathDelim + Controller.GetUnitName(dsTABLESCLASS_NAME.AsString) + '.pas';
+         // Verify if the file exists previously
+         if FileExists(FileName) then begin
+            if not OverwriteIt then begin
+               case MessageDlg(Format('The file "%s" preiously exists. Overwrite it?', [FileName]), mtConfirmation, [mbYes, mbYesToAll, mbNo, mbCancel], 0) of
+                  mrYes: begin
+                     MemoOutputCode.Lines.SaveToFile(FileName);
+                     Inc(EntityCount);
+                     Log.Info('File '+FileName+' rewrited.', LOG_TAG);
+                  end;
+                  mrYesToAll: begin
+                     MemoOutputCode.Lines.SaveToFile(FileName); {Overwrite current and all the next}
+                     Inc(EntityCount);
+                     OverwriteIt := True;
+                     Log.Info('All the next file are going to be overwrite if them exists previously.', LOG_TAG);
+                  end;
+                  mrNo: begin // Do not overwrite. Continue with the next iteration
+                     Log.Info('File '+FileName+' has not been generated.', LOG_TAG);
+                     dsTables.Next;
+                     Continue;
+                  end;
+                  mrCancel: begin// Abortar el proceso de guardado
+                     Log.Info('Operation of save file canceled by the user', LOG_TAG);
+                     Break;
+                  end;
+               end;
+            end
+            else begin
+               // Save the file because the user decided to overwrite all
+               MemoOutputCode.Lines.SaveToFile(FileName);
+               Inc(EntityCount);
+               Log.Info('File '+FileName+' has been saved', LOG_TAG);
+            end;
+         end
+         else begin
+            // Save the file without issues
+            MemoOutputCode.Lines.SaveToFile(FileName);
+            Inc(EntityCount);
+            Log.Info('File '+FileName+' has been saved', LOG_TAG);
+         end;
+         dsTables.Next;
       end;
       // Restore previous positons
       dsTables.GotoBookmark(MarkTable);
@@ -363,7 +342,6 @@ begin
                            dsTablesTABLE_NAME.AsString,
                            dsTablesCLASS_NAME.AsString,
                            dsFields,
-                           DBConnection,
                            CheckBoxClassAsAbstract.Checked,
                            RadioGroupNameCase.Items[RadioGroupNameCase.ItemIndex],
                            CheckBoxWithMappingRegistry.Checked,
@@ -391,22 +369,77 @@ begin
    ActionGenerateCurrent.Enabled := not FProjectName.IsEmpty;
 end;
 
-procedure TMain.ActionLoadProjectExecute(Sender: TObject);
+procedure TMain.ActionOpenProjectExecute(Sender: TObject);
+//var i :Integer;
+//    j :Integer;
 begin
    ProjectOpenDialog.DefaultExtension := 'entgen';
    if ProjectOpenDialog.Execute then begin
       ProjectName := ProjectOpenDialog.FileName;
-      LoadProjectFromFile;
+
+      {$Message Warn 'Check that is appropiated lost the current project}
+
+      Controller.LoadProject(ProjectName);
+      dsTables.Open;
+      dsFields.Open;
+      {$Message Warn 'Set all the things in his place'}
+
+      ResetUI;
+
+      if not TFile.Exists(FProjectName) then Exit;
+
+      //ActionRefreshDBInfo.Execute;
+
+      //RadioGroupNameCase.ItemIndex            := FConfig.I[RadioGroupNameCase.Name];
+      //RadioGroupFieldNameFormatting.ItemIndex := FConfig.I[RadioGroupFieldNameFormatting.Name];
+      //CheckBoxWithMappingRegistry.Checked     := FConfig.B[CheckBoxWithMappingRegistry.Name];
+
+      //EditOutputFileName.Text := FConfig.S[EditOutputFileName.Name];
+
+      FModified := False;
    end;
+end;
+
+procedure TMain.ActionRefreshDBInfoExecute(Sender: TObject);
+begin
+   Controller.RefreshDBInfo(RadioGroupFieldNameFormatting.ItemIndex = 1);
+
+   {Fill with data from Database}
+   dsTables.DisableControls;
+   dsFields.DisableControls;
+   try
+      Controller.FillViewData(dsTables, dsFields);
+      TabSheetTables.Caption := 'Tables (' + dsTables.RecordCount.ToString + ')';
+   finally
+      dsTables.EnableControls;
+      dsFields.EnableControls;
+   end;
+end;
+
+procedure TMain.ActionRefreshDBInfoUpdate(Sender: TObject);
+begin
+   ActionRefreshDBInfo.Enabled := ARDB.Connected and DBConnection.Connected;
 end;
 
 procedure TMain.ActionNewProjectExecute(Sender: TObject);
 begin
-   DialogSaveProject.DefaultFolder := ExtractFilePath(ParamStr(0));
-   DialogSaveProject.FileName      := DEFAULT_PROJECT_NAME;
-   if DialogSaveProject.Execute then begin
-      ProjectName := DialogSaveProject.FileName;
-      //LoadProjectFromFile;
+   {$Message Warn 'Be sure all is correct before create a new project'}
+   {ARDB Connected means that there are a Database in Memory}
+   if ARDB.Connected then begin
+      {if there are changes not saved to disk}
+      if FModified then begin
+
+
+      end;
+   end
+   else begin
+      Controller.CreateEntGenDB;
+      dsTables.Open;
+      dsFields.Open;
+      ProjectName := NOT_SAVED_PROJECT_NAME;
+      FModified   := True;
+      Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+      Log.Info('Created and empty project', LOG_TAG);
    end;
 end;
 
@@ -414,23 +447,52 @@ procedure TMain.ActionSaveProjectAsExecute(Sender: TObject);
 begin
    if DialogSaveProject.Execute then begin
       ProjectName := DialogSaveProject.FileName;
-      SaveProject;
+      //Controlelr.SaveProject;
    end;
 end;
 
 procedure TMain.ActionSaveProjectExecute(Sender: TObject);
-var MarkTable :TBookmark;
-    MarkField :TBookmark;
+var MarkTable       :TBookmark;
+    MarkField       :TBookmark;
+    tempProjectName :string;
 begin
-   // Save current positions
+
+
+(*var JObj  :TJSONObject;
+    Field :TField;
+begin
+   FConfig.I[RadioGroupNameCase.Name           ] := RadioGroupNameCase.ItemIndex;
+   FConfig.I[RadioGroupFieldNameFormatting.Name] := RadioGroupFieldNameFormatting.ItemIndex;
+   FConfig.B[CheckBoxWithMappingRegistry.Name  ] := CheckBoxWithMappingRegistry.Checked;
+   //FConfig.S[EditOutputFileName.Name] := EditOutputFileName.Text;
+
+   fConfig.Remove('tables');
+   DTables.First;
+   while not DTables.Eof do begin
+      JObj := fConfig.A['tables'].AddObject;
+      for Field in DTables.Fields do begin
+         JObj.S[Field.FieldName] := Field.AsString;
+      end;
+      DTables.Next;
+   end;
+
+   DTables.First;
+   FConfig.SaveToFile(FProjectName, False); *)
+
+
+
+
+
+   {First, saves all the pendant changes to memory database}
+   { Save current positions }
    MarkTable := dsTables.GetBookmark;
    MarkField := dsFields.GetBookmark;
    dsTables.DisableControls;
    dsFields.DisableControls;
    try
-      Controller.SaveProject(dsTables, dsFields);
+      Controller.SavePendantData(dsTables, dsFields);
 
-      // Restore previous positons
+      { Restore previous positons }
       dsTables.GotoBookmark(MarkTable);
       dsFields.GotoBookmark(MarkField);
    finally
@@ -439,22 +501,59 @@ begin
       dsTables.FreeBookmark(MarkTable);
       dsFields.FreeBookmark(MarkField);
    end;
+
+   if ProjectName = NOT_SAVED_PROJECT_NAME then begin
+      {Get the desired project name}
+      DialogSaveProject.DefaultFolder := ExtractFilePath(ParamStr(0));
+      DialogSaveProject.FileName      := DEFAULT_PROJECT_NAME;
+      if DialogSaveProject.Execute then begin
+         TempProjectName := DialogSaveProject.FileName;
+      end
+      else Exit;
+
+      if FileExists(TempProjectName) then begin
+         case MessageDlg(Format('The project "%s" previusly exists. Overwrite it?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
+            mrYes: begin
+               if Controller.SaveProject(TempProjectName) then begin
+                  FProjectName := TempProjectName;
+                  ActionRefreshDBInfo.Execute;
+                  Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+                  Log.Info('Project '+FProjectName+' rewrited on disk.', LOG_TAG);
+               end
+               else begin
+                  Log.Info('Project '+FProjectName+' failed to be rewrited on disk.', LOG_TAG);
+                  raise Exception.Create('Error saving data');
+               end;
+            end;
+            mrCancel: begin { Abort the saving process }
+               Log.Info('Operation of create a new Project canceled by thee user', LOG_TAG);
+               Caption := Format('DMVCFramework Entities Generator :: (Without project open)', [FProjectName, DMVCFRAMEWORK_VERSION]);
+            end;
+         end;
+      end
+      else begin
+         if Controller.SaveProject(TempProjectName) then begin
+            FProjectName := TempProjectName;
+            ActionRefreshDBInfo.Execute;
+            Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+            Log.Info('Project '+FProjectName+' save to file for the first time.', LOG_TAG);
+         end
+         else begin
+            Log.Info('Project '+FProjectName+' failed to be saved on disk.', LOG_TAG);
+            raise Exception.Create('Error saving data');
+         end;
+      end;
+   end
+   else begin
+      Controller.SaveProject(FProjectName);
+      ActionRefreshDBInfo.Execute;
+      Log.Info(Format('Database %s saved on disk', [FProjectName]), LOG_TAG);
+   end;
 end;
 
 procedure TMain.ActionSaveProjectUpdate(Sender: TObject);
 begin
    ActionSaveProject.Enabled := FModified;
-end;
-
-procedure TMain.BtnEditConnectionClick(Sender: TObject);
-var FDConnEditor :TfrmFDGUIxFormsConnEdit;
-begin
-    FDConnEditor := TfrmFDGUIxFormsConnEdit.Create(Self);
-    try
-       FDConnEditor.Execute(DBConnection, 'Caption', nil);
-    finally
-       FDConnEditor.Free;
-    end;
 end;
 
 procedure TMain.GridFieldsDblClick(Sender: TObject);
@@ -464,17 +563,18 @@ begin
 
    EditField := TEditFieldForm.Create(nil);
    try
-      // Configure the properties of the form before show it.
+      { Configure the properties of the form before show it. }
       EditField.TableName  := dsFieldsTABLE_NAME.AsString;
       EditField.FieldName  := dsFieldsFIELD_NAME.AsString;
       EditField.CustomName := dsFieldsCUSTOM_NAME.AsString;
 
-      // Show the form in Modal state
+      { Show the form in Modal state }
       if EditField.ShowModal = mrOK then begin
-         // Recover the data modified after close the form.
+         { Recover the data modified after close the form. }
          dsFields.Edit;
          dsFieldsCUSTOM_NAME.AsString := EditField.CustomName;
          dsFields.Post;
+         Controller.SaveCurrentViewFieldToMemory(dsFields);
          FModified := True;
       end;
    finally
@@ -491,101 +591,12 @@ begin
    GridFields.Columns[0].Color := clBtnShadow;
 end;
 
-procedure TMain.LoadProjectFromFile;
-var i :Integer;
-    j :Integer;
-begin
-   ResetUI;
-
-   if not TFile.Exists(FProjectName) then Exit;
-
-   FConfig.LoadFromFile(FProjectName);
-
-   ActionRefreshTableList.Execute;
-
-   RadioGroupNameCase.ItemIndex            := FConfig.I[RadioGroupNameCase.Name];
-   RadioGroupFieldNameFormatting.ItemIndex := FConfig.I[RadioGroupFieldNameFormatting.Name];
-   CheckBoxWithMappingRegistry.Checked     := FConfig.B[CheckBoxWithMappingRegistry.Name];
-
-(*   DTables.First;
-   I := 0;
-   while not DTables.EOF do begin
-      lJObj := FConfig.A['tables'].Items[I].ObjectValue;
-      if lJObj.S['TABLE_NAME'] = DTablesTABLE_NAME.AsString then begin
-         DTables.Edit;
-         try
-            for j := 0 to lJObj.Count - 1 do begin
-               if Assigned(DTables.FindField(lJObj.Names[J])) then begin
-                  DTables.Fields[J].AsString := lJObj.S[lJObj.Names[J]];
-               end;
-            end;
-            Inc(I);
-         finally
-            DTables.Post;
-         end;
-      end;
-      DTables.Next;
-   end;
-   DTables.First;*)
-
-   //EditOutputFileName.Text := fConfig.S[EditOutputFileName.Name];
-end;
-
 procedure TMain.ResetUI;
 begin
    RadioGroupNameCase.ItemIndex            := 0;
    RadioGroupFieldNameFormatting.ItemIndex := 0;
    CheckBoxWithMappingRegistry.Checked     := False;
    dsTables.EmptyDataSet;
-end;
-
-procedure TMain.SaveProject;
-var JObj  :TJSONObject;
-    Field :TField;
-begin
-   FConfig.I[RadioGroupNameCase.Name           ] := RadioGroupNameCase.ItemIndex;
-   FConfig.I[RadioGroupFieldNameFormatting.Name] := RadioGroupFieldNameFormatting.ItemIndex;
-   FConfig.B[CheckBoxWithMappingRegistry.Name  ] := CheckBoxWithMappingRegistry.Checked;
-   //FConfig.S[EditOutputFileName.Name] := EditOutputFileName.Text;
-
-   (*fConfig.Remove('tables');
-   DTables.First;
-   while not DTables.Eof do begin
-      JObj := fConfig.A['tables'].AddObject;
-      for Field in DTables.Fields do begin
-         JObj.S[Field.FieldName] := Field.AsString;
-      end;
-      DTables.Next;
-   end;
-
-   DTables.First;*)
-   FConfig.SaveToFile(FProjectName, False);
-end;
-
-procedure TMain.SetProjectName(const Value: String);
-begin
-   FProjectName := Value;
-   if not FileExists(FProjectName) then begin
-      Controller.Connection := ARDB;
-      Controller.CreateEntGenDB(FProjectName);
-      Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-      Log.Info('Project '+FProjectName+' created.', LOG_TAG);
-   end
-   else begin
-      case MessageDlg(Format('The project "%s" preiously exists. Overwrite it?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
-         mrYes: begin
-
-            Controller.CreateEntGenDB(FProjectName);
-            Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-            Log.Info('Project '+FProjectName+' rewrited.', LOG_TAG);
-         end;
-         mrCancel: begin// Abortar el proceso de guardado
-            Log.Info('Operation of create a new Project canceled by thee user', LOG_TAG);
-            FProjectName := '';
-            Caption := Format('DMVCFramework Entities Generator :: (Without project open)', [FProjectName, DMVCFRAMEWORK_VERSION]);
-         end;
-      end;
-   end;
 end;
 
 end.

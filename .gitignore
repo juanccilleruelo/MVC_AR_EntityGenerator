@@ -27,3 +27,6 @@ __history
 /Tests/ExampleEncodeUnit/EncryptForm.rsm
 /*.dsv
 /*.orm
+/bin/*.entgen
+/bin/*.log
+/db/chinook.zip

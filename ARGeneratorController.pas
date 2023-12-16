@@ -13,7 +13,7 @@ uses System.Classes, System.Generics.Collections, System.Rtti, System.DateUtils,
      FireDAC.Phys.MySQLDef, FireDAC.Phys.MySQL, FireDAC.Phys.PGDef, FireDAC.Phys.PG,
      FireDAC.Phys.IBDef, FireDAC.Phys.IB, FireDAC.Stan.ExprFuncs, FireDAC.Phys.SQLiteDef,
      FireDAC.Phys.SQLite, FireDAC.Phys.SQLiteWrapper.Stat, FireDAC.Moni.RemoteClient,
-     FireDAC.Moni.Custom, FireDAC.Moni.Base, FireDAC.Moni.FlatFile,
+     FireDAC.Moni.Custom, FireDAC.Moni.Base, FireDAC.Moni.FlatFile, FireDAC.Phys.SQLiteWrapper,
      System.JSON, Data.DBXJSONReflect,
      LoggerPro.FileAppender,
      LoggerPro.VCLListBoxAppender,
@@ -23,13 +23,10 @@ type
   TARGeneratorController = class
   private
     FLog         :ILogWriter;
-    FProjectName :string;        {Name of the Database file}
-    FDBName      :string;        {The name of the SQlite database where all definitions are saved}
-    FConnection  :TFDConnection; {Link to the Database of the component editor                   }
+    FARDB        :TFDConnection; {Link to the Database of the component editor                      }
+    FConnection  :TFDConnection; {Link to the Database of work. From which we extract ActiverRecords}
     function IsReservedKeyword(const Value: String): Boolean;
     function GetProjectGroup: string; //IOTAProjectGroup;
-    function GetDBName:string;
-    function DBExists:Boolean;
     function GetFolderName(const ATableName : string):string;
     function GetDeployPath(const AFolderName: string):string;
 
@@ -80,19 +77,22 @@ type
                            const TableName           :string;
                            const AClassName          :string;
                            const dsFields            :TFDMemTable;
-                           const OutConnection       :TFDConnection;
                            const AsAbstract          :Boolean;
                            const NameCase            :string;
                            const WithMappingRegistry :Boolean;
                            const FormatAsPascalCase  :Boolean);
 
-    function CreateEntGenDB(ProjectName :string):Boolean;
-    function PopulateDB(CompConnection :TFDConnection; FormatAsPascalCase :Boolean):Boolean;
-    procedure FillViewData(Tables, Fields :TFDMemTable);
-    procedure SaveProject(Tables, Fields :TFDMemTable);
+    function CreateEntGenDB:Boolean;
+    procedure SaveDBConnectionInfo;
+    {***}function RefreshDBInfo(FormatAsPascalCase :Boolean):Boolean;
+    {***}procedure FillViewData(Tables, Fields :TFDMemTable);
+    {***}procedure SavePendantData(Tables, Fields :TFDMemTable);
+    procedure SaveCurrentViewTableToMemory(Tables :TFDMemTable);
+    procedure SaveCurrentViewFieldToMemory(Fields :TFDMemTable);
+    function SaveProject(ProjectName :string):Boolean;
+    function LoadProject(ProjectName :string):Boolean;
   public
-    property ProjectName :string        read FProjectName write FProjectName;
-    property DBName      :string        read GetDBName;
+    property ARDB        :TFDConnection read FARDB        write FARDB;
     property Connection  :TFDConnection read FConnection  write FConnection;
     property Log         :ILogWriter    read FLog         write Flog;
   end;
@@ -110,6 +110,8 @@ uses System.TypInfo,
 
 const
    LOG_TAG                  = 'Controller';
+   CONNECTION_INDEX         = 1;
+
    META_F_TABLE_NAME        = 'TABLE_NAME';
    META_F_COLUMN_NAME       = 'COLUMN_NAME';
    META_F_COLUMN_DATATYPE   = 'COLUMN_DATATYPE';
@@ -125,7 +127,6 @@ const
 constructor TARGeneratorController.Create;
 begin
    inherited;
-   FProjectName := '';
 end;
 
 destructor TARGeneratorController.Destroy;
@@ -133,43 +134,127 @@ begin
    inherited;
 end;
 
-function TARGeneratorController.CreateEntGenDB(ProjectName :string):Boolean;
+function TARGeneratorController.CreateEntGenDB:Boolean;
 begin
-   {At this point we are sure we want create or override the project file}
+   {We use the prefix 'AR' in the table names and the suffix 'NAME' in
+    some field names because of the high risk that the words Connection,
+    Table, Field and others can't be used as identifiers in a DB definition}
 
    {Creates an Empty File for next times}
-   Connection.Connected := True;
-   Connection.ExecSQL('CREATE TABLE AR_TABLES (                 ' +
-                      '  TABLE_NAME         TEXT   PRIMARY KEY, ' +
-                      '  EXISTENCE          TEXT              , ' + {C = Continue; D = Deleted; N = New;}
-                      '  CLASS_NAME         TEXT              , ' + {Normally is a 'T' plus the singular versión of the TableName }
-                      '  DEPLOY_PATH        TEXT              , ' + {The path where the file is deployed }
-                      //'  TARGET_CLASS_NAME  TEXT              , ' +
-                      //'  TARGET_FILE_NAME   TEXT              , ' +
-                      '  WITH_DETAIL        TEXT              , ' + {Indicates if this table has a detail related table}
-                      '  DETAIL_CLASS_NAME  TEXT              , ' + {The detail TABLE_CLASS_NAME ????? is not the Details_Table_name? }
-                      '  DETAIL_PROP_NAME   TEXT              , ' +
-                      '  DETAIL_UNIT_NAME   TEXT                ' +
-                      ');                                       ');
+   ARDB.Connected := True;
+   ARDB.ExecSQL('CREATE TABLE AR_CONNECTION (              ' +
+                '  INDEX_ID           INTEGER PRIMARY KEY, ' + {The table needs a PK }
+                '  DRIVER_NAME        TEXT               , ' + {DriverName           }
+                '  LOGIN_PROMPT       TEXT               , ' + {LoginPrompt          }
+                '  PARAMS             TEXT                 ' + {Params               }
+                ');                                        ');
 
-   Connection.ExecSQL('CREATE TABLE AR_FIELDS (                                          ' +
-                      '  TABLE_NAME         TEXT                                       , ' +
-                      '  FIELD_NAME         TEXT                                       , ' +
-                      '  EXISTENCE          TEXT                                       , ' + {C = Continue; D = Deleted; N = New;}
-                      '  CUSTOM_NAME        TEXT                                       , ' +
-                      '  CONSTRAINT PK_AR_FIELDS PRIMARY KEY (TABLE_NAME, FIELD_NAME)    ' +
-                      ');                                           ');
+   ARDB.ExecSQL('CREATE TABLE AR_TABLES (                 ' +
+                '  TABLE_NAME         TEXT   PRIMARY KEY, ' +
+                '  EXISTENCE          TEXT              , ' + {C = Continue; D = Deleted; N = New;}
+                '  CLASS_NAME         TEXT              , ' + {Normally is a 'T' plus the singular versión of the TableName }
+                '  DEPLOY_PATH        TEXT              , ' + {The path where the file is deployed }
+                //'  TARGET_CLASS_NAME  TEXT              , ' +
+                //'  TARGET_FILE_NAME   TEXT              , ' +
+                '  WITH_DETAIL        TEXT              , ' + {Indicates if this table has a detail related table}
+                '  DETAIL_CLASS_NAME  TEXT              , ' + {The detail TABLE_CLASS_NAME ????? is not the Details_Table_name? }
+                '  DETAIL_PROP_NAME   TEXT              , ' +
+                '  DETAIL_UNIT_NAME   TEXT                ' +
 
-   ShowMessage('Project '+DBName+' created.'+#13+'Do not forget to include this file as part of your project configuration management policy.');
+                ');                                       ');
+
+   ARDB.ExecSQL('CREATE TABLE AR_FIELDS (                                          ' +
+                '  TABLE_NAME         TEXT                                       , ' +
+                '  FIELD_NAME         TEXT                                       , ' +
+                '  EXISTENCE          TEXT                                       , ' + {C = Continue; D = Deleted; N = New;}
+                '  CUSTOM_NAME        TEXT                                       , ' +
+                '  CONSTRAINT PK_AR_FIELDS PRIMARY KEY (TABLE_NAME, FIELD_NAME)    ' +
+                ');                                           ');
+end;
+
+procedure TARGeneratorController.SaveDBConnectionInfo;
+var Q :TFDQuery;
+begin
+   Q := TFDQuery.Create(nil);
+   Q.Connection := ARDB;
+   Q.SQL.Add(Format('SELECT INDEX_ID FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
+   Q.Open;
+   try
+      { Still does not exists this row }
+      if Q.IsEmpty then begin
+         ARDB.ExecSQL(Format('INSERT INTO AR_CONNECTION (INDEX_ID       ,   '+
+                             '                           DRIVER_NAME    ,   '+
+                             '                           PARAMS         )   '+
+                             'VALUES (%d, ''%s'', ''%s''                );  ',
+                             [CONNECTION_INDEX      ,
+                              Connection.DriverName ,
+                              Connection.Params.Text]));
+      end
+      else begin
+         ARDB.ExecSQL(Format('UPDATE AR_CONNECTION SET DRIVER_NAME     = ''%s'' ,  '+
+                             '                         PARAMS          = ''%s''    '+
+                             'WHERE INDEX_ID = %d;                                 ',
+                             [Connection.DriverName,
+                              Connection.Params.Text,
+                              CONNECTION_INDEX]));
+      end;
+   finally
+      {Seems to be a problem with this instruction.
+       If I uncomment it the Connection will be not accessible.
+       Is like if Q.Free liberates too Connection.
+       I tried to communicate this bug to Embarcadero but the quality.embarcadero.com is not working
+      }
+      //Q.Free;
+   end;
+end;
+
+function TARGeneratorController.SaveProject(ProjectName :string):Boolean;
+var BackupDB :TFDSQLiteBackup;
+    DLink    :TFDPhysSQLiteDriverLink;
+begin
+   {We are sure that the target database does not exists or we want overwrite it}
+   DLink    := TFDPhysSQLiteDriverLink.Create(nil);
+   BackupDB := TFDSQLiteBackup.Create(nil);
+   Result   := False;
+   try
+      BackupDB.DriverLink   := DLink;
+      BackupDB.DatabaseObj  := ARDB.CliObj;
+      BackupDB.DestMode     := TSQLiteDatabaseMode.smCreate;
+      BackupDB.DestDatabase := ProjectName;
+      BackupDB.Backup;
+      Result := True;
+   finally
+      BackupDB.Free;
+   end;
+end;
+
+function TARGeneratorController.LoadProject(ProjectName :string):Boolean;
+var RestoreDB :TFDSQLiteBackup;
+    DLink     :TFDPhysSQLiteDriverLink;
+begin
+   {We are sure that the target database does not exists or we want overwrite it}
+   DLink     := TFDPhysSQLiteDriverLink.Create(nil);
+   RestoreDB := TFDSQLiteBackup.Create(nil);
+   Result    := False;
+   try
+      RestoreDB.DriverLink      := DLink;
+      RestoreDB.DestDatabaseObj := ARDB.CliObj;
+      RestoreDB.DestMode        := TSQLiteDatabaseMode.smCreate;
+      RestoreDB.Database        := ProjectName;
+      RestoreDB.Backup;
+      Result := True;
+   finally
+      RestoreDB.Free;
+   end;
 end;
 
 procedure TARGeneratorController.ClearAllExists;
 begin
-   Connection.ExecSQL('UPDATE AR_TABLES SET EXISTENCE = ''D''');
-   Connection.ExecSQL('UPDATE AR_FIELDS SET EXISTENCE = ''D''');
+   ARDB.ExecSQL('UPDATE AR_TABLES SET EXISTENCE = ''D''');
+   ARDB.ExecSQL('UPDATE AR_FIELDS SET EXISTENCE = ''D''');
 end;
 
-function TARGeneratorController.PopulateDB(CompConnection :TFDConnection; FormatAsPascalCase :Boolean):Boolean;
+function TARGeneratorController.RefreshDBInfo(FormatAsPascalCase :Boolean):Boolean;
 var Qt          :TFDQuery;
     Qf          :TFDQuery;
     Tables      :TStringList;
@@ -186,17 +271,17 @@ begin
    ClearAllExists; {Mark all tables and fields as not existing}
 
    Qt := TFDQuery.Create(nil);
-   Qt.Connection := Connection;
+   Qt.Connection := ARDB;
    Qt.SQL.Add('SELECT TABLE_NAME FROM AR_TABLES WHERE TABLE_NAME = :prmTableName');
 
    Qf := TFDQuery.Create(nil);
-   Qf.Connection := Connection;
+   Qf.Connection := ARDB;
    Qf.SQL.Add('SELECT FIELD_NAME FROM AR_FIELDS WHERE TABLE_NAME = :prmTableName AND FIELD_NAME = :prmFieldName');
 
    Tables := TStringList.Create;
    try
       {Recover all the tables of the database}
-      CompConnection.GetTableNames('', '', '', Tables);
+      Connection.GetTableNames('', '', '', Tables);
       for Table in Tables do begin
           {Insert each table data into the table of ARDB}
           FolderName := GetFolderName(Table);
@@ -207,15 +292,15 @@ begin
           try
              { Still does not exists this row }
              if Qt.IsEmpty then begin
-                Connection.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME,   '+
-                                          '                       CLASS_NAME,   '+
-                                          '                       DEPLOY_PATH,  '+
-                                          '                       EXISTENCE )   '+
-                                          'VALUES (''%s'', ''%s'', ''%s'', ''N'');', [Table, ClassName, DeployPath]));
+                ARDB.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME,   '+
+                                    '                       CLASS_NAME,   '+
+                                    '                       DEPLOY_PATH,  '+
+                                    '                       EXISTENCE )   '+
+                                    'VALUES (''%s'', ''%s'', ''%s'', ''N'');', [Table, ClassName, DeployPath]));
              end
              else begin
-                Connection.ExecSQL(Format('UPDATE AR_TABLES SET EXISTENCE = ''C''  '+
-                                          'WHERE TABLE_NAME = ''%s'';              ', [Table]));
+                ARDB.ExecSQL(Format('UPDATE AR_TABLES SET EXISTENCE = ''C''  '+
+                                    'WHERE TABLE_NAME = ''%s'';              ', [Table]));
              end;
 
           finally
@@ -224,7 +309,7 @@ begin
 
           {Recover all fields of the current table}
           MetaData := TFDMetaInfoQuery.Create(nil);
-          MetaData.Connection   := CompConnection;
+          MetaData.Connection   := Connection;
           MetaData.ObjectScopes := [osMy]; {Objects created by the current login user.} {osSystem Objects belonging to the DBMS. osOther All other objects.}
           MetaData.MetaInfoKind := mkTableFields;
           MetaData.ObjectName   := Table;
@@ -251,17 +336,17 @@ begin
                 Qf.Open;
                 try
                    if Qf.IsEmpty then begin
-                      Connection.ExecSQL(Format('INSERT INTO AR_FIELDS (TABLE_NAME,  '+
-                                                '                       FIELD_NAME,  '+
-                                                '                       CUSTOM_NAME, '+
-                                                //'                       JSON_NAME  , '+
-                                                '                       EXISTENCE )  '+
-                                                'VALUES (''%s'', ''%s'', ''%s'', ''N'');', [Table, FieldName, Identifiers[i]]));
+                      ARDB.ExecSQL(Format('INSERT INTO AR_FIELDS (TABLE_NAME,  '+
+                                          '                       FIELD_NAME,  '+
+                                          '                       CUSTOM_NAME, '+
+                                          //'                       JSON_NAME  , '+
+                                          '                       EXISTENCE )  '+
+                                          'VALUES (''%s'', ''%s'', ''%s'', ''N'');', [Table, FieldName, Identifiers[i]]));
                    end
                    else begin
-                      Connection.ExecSQL(Format('UPDATE AR_FIELDS SET EXISTENCE = ''C''  '+
-                                                'WHERE TABLE_NAME = ''%s''               '+
-                                                'AND   FIELD_NAME = ''%s'';              ', [Table, FieldName]));
+                      ARDB.ExecSQL(Format('UPDATE AR_FIELDS SET EXISTENCE = ''C''  '+
+                                          'WHERE TABLE_NAME = ''%s''               '+
+                                          'AND   FIELD_NAME = ''%s'';              ', [Table, FieldName]));
                    end;
                 finally
                    Qf.Close;
@@ -285,14 +370,14 @@ var Qt :TFDQuery;
     Qf :TFDQuery;
 begin
    Qt := TFDQuery.Create(nil);
-   Qt.Connection := Connection;
+   Qt.Connection := ARDB;
    Qt.SQL.Add('SELECT TABLE_NAME,  '+
               '       CLASS_NAME,  '+
               '       DEPLOY_PATH  '+
               'FROM AR_TABLES   ;  ');
 
    Qf := TFDQuery.Create(nil);
-   Qf.Connection := Connection;
+   Qf.Connection := ARDB;
    Qf.SQL.Add('SELECT TABLE_NAME,                 '+
               '       FIELD_NAME,                 '+
               '       CUSTOM_NAME                 '+
@@ -330,16 +415,21 @@ begin
    end;
 end;
 
-procedure TARGeneratorController.SaveProject(Tables, Fields :TFDMemTable);
+procedure TARGeneratorController.SavePendantData(Tables, Fields :TFDMemTable);
 var Qt :TFDQuery;
     Qf :TFDQuery;
 begin
+   Exit;
+
+   {Thist method is not going to be necessary.
+    But I can reuse it to clean modifications on DB before save project next time}
+
    Qt := TFDQuery.Create(nil);
-   Qt.Connection := Connection;
+   Qt.Connection := ARDB;
    Qt.SQL.Add('SELECT TABLE_NAME FROM AR_TABLES WHERE TABLE_NAME = :prmTableName');
 
    Qf := TFDQuery.Create(nil);
-   Qf.Connection := Connection;
+   Qf.Connection := ARDB;
    Qf.SQL.Add('SELECT FIELD_NAME FROM AR_FIELDS WHERE TABLE_NAME = :prmTableName AND FIELD_NAME = :prmFieldName');
 
    Tables.First;
@@ -352,28 +442,28 @@ begin
          try
             { Still does not exists this row }
             if Qt.IsEmpty then begin
-               Connection.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME,   '+
-                                         '                       CLASS_NAME,   '+
-                                         '                       DEPLOY_PATH,  '+
-                                         '                       EXISTENCE )   '+
-                                         'VALUES (''%s'', ''%s'', ''%s'', ''C'');', [Tables.FieldByName('TABLE_NAME' ).AsString,
-                                                                                     Tables.FieldByName('CLASS_NAME' ).AsString,
-                                                                                     Tables.FieldByName('DEPLOY_PATH').AsString]));
+               ARDB.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME,   '+
+                                   '                       CLASS_NAME,   '+
+                                   '                       DEPLOY_PATH,  '+
+                                   '                       EXISTENCE )   '+
+                                   'VALUES (''%s'', ''%s'', ''%s'', ''C'');', [Tables.FieldByName('TABLE_NAME' ).AsString,
+                                                                               Tables.FieldByName('CLASS_NAME' ).AsString,
+                                                                               Tables.FieldByName('DEPLOY_PATH').AsString]));
             end
             else begin
-               Connection.ExecSQL(Format('UPDATE AR_TABLES SET EXISTENCE   = ''C''  ,  '+
-                                         '                     CLASS_NAME  = ''%s'' ,  '+
-                                         '                     DEPLOY_PATH = ''%s''    '+
-                                         'WHERE TABLE_NAME = ''%s'';               ', [Tables.FieldByName('CLASS_NAME' ).AsString,
-                                                                                       Tables.FieldByName('DEPLOY_PATH').AsString,
-                                                                                       Tables.FieldByName('TABLE_NAME' ).AsString]));
+               ARDB.ExecSQL(Format('UPDATE AR_TABLES SET EXISTENCE   = ''C''  ,  '+
+                                   '                     CLASS_NAME  = ''%s'' ,  '+
+                                   '                     DEPLOY_PATH = ''%s''    '+
+                                   'WHERE TABLE_NAME = ''%s'';               ', [Tables.FieldByName('CLASS_NAME' ).AsString,
+                                                                                 Tables.FieldByName('DEPLOY_PATH').AsString,
+                                                                                 Tables.FieldByName('TABLE_NAME' ).AsString]));
             end;
 
          finally
             Qt.Close;
          end;
-         {Traverse all the fields of the current table}
 
+         {Traverse all the fields of the current table}
          Fields.First;
          while not Fields.EOF do begin
             {Insert each field data into the table of ARDB}
@@ -382,21 +472,21 @@ begin
             Qf.Open;
             try
                if Qf.IsEmpty then begin
-                  Connection.ExecSQL(Format('INSERT INTO AR_FIELDS (TABLE_NAME,  '+
-                                            '                       FIELD_NAME,  '+
-                                            '                       CUSTOM_NAME, '+
-                                            '                       EXISTENCE )  '+
-                                            'VALUES (''%s'', ''%s'', ''%s'', ''C'');', [Fields.FieldByName('TABLE_NAME' ).AsString,
-                                                                                        Fields.FieldByName('FIELD_NAME' ).AsString,
-                                                                                        Fields.FieldByName('CUSTOM_NAME').AsString]));
+                  ARDB.ExecSQL(Format('INSERT INTO AR_FIELDS (TABLE_NAME,  '+
+                                      '                       FIELD_NAME,  '+
+                                      '                       CUSTOM_NAME, '+
+                                      '                       EXISTENCE )  '+
+                                      'VALUES (''%s'', ''%s'', ''%s'', ''C'');', [Fields.FieldByName('TABLE_NAME' ).AsString,
+                                                                                  Fields.FieldByName('FIELD_NAME' ).AsString,
+                                                                                  Fields.FieldByName('CUSTOM_NAME').AsString]));
                end
                else begin
-                  Connection.ExecSQL(Format('UPDATE AR_FIELDS SET EXISTENCE   = ''C'' ,  '+
-                                            '                     CUSTOM_NAME = ''%s''   '+
-                                            'WHERE TABLE_NAME = ''%s''                   '+
-                                            'AND   FIELD_NAME = ''%s'';                  ', [Fields.FieldByName('CUSTOM_NAME').AsString,
-                                                                                             Fields.FieldByName('TABLE_NAME' ).AsString,
-                                                                                             Fields.FieldByName('FIELD_NAME' ).AsString]));
+                  ARDB.ExecSQL(Format('UPDATE AR_FIELDS SET EXISTENCE   = ''C'' ,  '+
+                                      '                     CUSTOM_NAME = ''%s''   '+
+                                      'WHERE TABLE_NAME = ''%s''                   '+
+                                      'AND   FIELD_NAME = ''%s'';                  ', [Fields.FieldByName('CUSTOM_NAME').AsString,
+                                                                                       Fields.FieldByName('TABLE_NAME' ).AsString,
+                                                                                       Fields.FieldByName('FIELD_NAME' ).AsString]));
                end;
             finally
                Qf.Close;
@@ -411,24 +501,63 @@ begin
    end;
 end;
 
-function TARGeneratorController.DBExists:Boolean;
+procedure TARGeneratorController.SaveCurrentViewTableToMemory(Tables :TFDMemTable);
+var Q :TFDQuery;
 begin
-   Result := FileExists(DBName);
-   if FileExists(DBName) then begin
-      //TextFile.LoadFromFile(FARsFileName);
-      //for i in TextFile do begin
-      //   if i.Trim <> '' then begin
-      //      {Convert the string in a ARDefine}
-      //      ARDefine := StringToARDefine(i);
-      //      {Add the string to the list of Objects}
-      //      FARConfigs.Add(ARDefine);
-      //   end;
-      //end;
-   end
-   else begin
-      {Creates an Empty File for next times}
-      //TextFile.SaveToFile(FARsFileName);
-      //ShowMessage('File '+FARsFileName+' created.'+#13+'Do not forget to include this file as part of your project configuration management policy.');
+   Q := TFDQuery.Create(nil);
+   Q.Connection := ARDB;
+   Q.SQL.Add('SELECT TABLE_NAME FROM AR_TABLES WHERE TABLE_NAME = :prmTableName');
+
+   {Insert each table data into the table of ARDB}
+   Q.ParamByName('prmTableName').AsString := Tables.FieldByName('TABLE_NAME').AsString;
+   Q.Open;
+   try
+      { Still does not exists this row }
+      if Q.IsEmpty then begin
+         {Currently we don´t allow to add tables to the Tables}
+         raise Exception.Create(Format('There is a problem. The Table %s does''t exists on memory DB',
+                                [Tables.FieldByName('TABLE_NAME').AsString]));
+      end
+      else begin
+         ARDB.ExecSQL(Format('UPDATE AR_TABLES SET CLASS_NAME  = ''%s'' ,  '+
+                             '                     DEPLOY_PATH = ''%s''    '+
+                             'WHERE TABLE_NAME = ''%s'';               ', [Tables.FieldByName('CLASS_NAME' ).AsString,
+                                                                           Tables.FieldByName('DEPLOY_PATH').AsString,
+                                                                           Tables.FieldByName('TABLE_NAME' ).AsString]));
+      end;
+
+   finally
+      Q.Close;
+   end;
+end;
+
+procedure TARGeneratorController.SaveCurrentViewFieldToMemory(Fields :TFDMemTable);
+var Q :TFDQuery;
+begin
+   Q := TFDQuery.Create(nil);
+   Q.Connection := ARDB;
+   Q.SQL.Add('SELECT FIELD_NAME FROM AR_FIELDS WHERE TABLE_NAME = :prmTableName AND FIELD_NAME = :prmFieldName');
+
+   {Insert each field data into the table of ARDB}
+   Q.ParamByName('prmTableName').AsString := Fields.FieldByName('TABLE_NAME').AsString;
+   Q.ParamByName('prmFieldName').AsString := Fields.FieldByName('FIELD_NAME').AsString;
+   Q.Open;
+   try
+      if Q.IsEmpty then begin
+         {Currently we don´t allow to add fields to the Fields}
+         raise Exception.Create(Format('There is a problem. The Field %s %s does''t exists on memory DB',
+                                [Fields.FieldByName('TABLE_NAME').AsString,
+                                 Fields.FieldByName('FIELD_NAME').AsString]));
+      end
+      else begin
+         ARDB.ExecSQL(Format('UPDATE AR_FIELDS SET CUSTOM_NAME = ''%s''   '+
+                             'WHERE TABLE_NAME = ''%s''                   '+
+                             'AND   FIELD_NAME = ''%s'';                  ', [Fields.FieldByName('CUSTOM_NAME').AsString,
+                                                                              Fields.FieldByName('TABLE_NAME' ).AsString,
+                                                                              Fields.FieldByName('FIELD_NAME' ).AsString]));
+      end;
+   finally
+      Q.Free;
    end;
 end;
 
@@ -436,7 +565,6 @@ procedure TARGeneratorController.GenerateCode(OutputText :TStrings;
                                               const TableName           :string;
                                               const AClassName          :string;
                                               const dsFields            :TFDMemTable;
-                                              const OutConnection       :TFDConnection;
                                               const AsAbstract          :Boolean;
                                               const NameCase            :string;
                                               const WithMappingRegistry :Boolean;
@@ -471,7 +599,7 @@ begin
    KeyFields          := TStringList.Create;
 
    MetaData := TFDMetaInfoQuery.Create(nil);
-   MetaData.Connection   := OutConnection;
+   MetaData.Connection   := Connection;
    MetaData.MetaInfoKind := mkTableFields;
    MetaData.ObjectName   := TableName;
    MetaData.Open;
@@ -494,7 +622,7 @@ begin
                   WithMappingRegistry);
 
       {Retrieve a list of primary key fields in a table}
-      OutConnection.GetKeyFieldNames('', '', TableName, '', KeyFields);
+      Connection.GetKeyFieldNames('', '', TableName, '', KeyFields);
 
       FieldNamesToInitialize := [];
       TypesName              := [];
@@ -624,31 +752,6 @@ begin
          Break;
       end;
    end;*)
-end;
-
-function TARGeneratorController.GetDBName: string;
-var  //Project      :IOTAProject;
-     //ProjectGroup :IOTAProjectGroup;
-     Project      :string;
-     ProjectGroup :string;
-     FileName     :string;
-     Path         :string;
-begin
-   Result := GetCurrentDir + PathDelim + FProjectName + '.db';
-{When converting the project to a component editor we need to reactivate this}
-
-(*
-   Result := '';
-   ProjectGroup := GetProjectGroup;
-   if Assigned(ProjectGroup) then begin
-      Project := ProjectGroup.ActiveProject;
-      if Assigned(Project) then begin
-         FileName := TPath.GetFileNameWithoutExtension(ExtractFileName(Project.FileName));
-         Path     := ExtractFilePath(Project.FileName);
-         Result   := Path+FileName+'.ar';
-      end;
-   end;
-   *)
 end;
 
 function TARGeneratorController.GetFolderName(const ATableName : string):string;
