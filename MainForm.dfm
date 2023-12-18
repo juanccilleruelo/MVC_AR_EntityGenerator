@@ -3,11 +3,11 @@ object Main: TMain
   Top = 0
   Caption = '[DMVCFramework] MVCActiveRecord Entity Generator'
   ClientHeight = 826
-  ClientWidth = 1166
+  ClientWidth = 1212
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
-  Font.Height = -16
+  Font.Height = -12
   Font.Name = 'Segoe UI'
   Font.Style = []
   Menu = MainMenu1
@@ -15,11 +15,11 @@ object Main: TMain
   Scaled = False
   OnClose = FormClose
   OnCreate = FormCreate
-  TextHeight = 21
+  TextHeight = 15
   object Splitter1: TSplitter
     Left = 0
     Top = 681
-    Width = 1166
+    Width = 1212
     Height = 3
     Cursor = crVSplit
     Align = alBottom
@@ -29,7 +29,7 @@ object Main: TMain
   object Panel8: TPanel
     Left = 0
     Top = 771
-    Width = 1166
+    Width = 1212
     Height = 55
     Margins.Right = 6
     Align = alBottom
@@ -37,12 +37,11 @@ object Main: TMain
     TabOrder = 0
     object BtnSaveProject: TButton
       AlignWithMargins = True
-      Left = 960
-      Top = 3
-      Width = 203
-      Height = 49
+      Left = 1028
+      Top = 8
+      Width = 174
+      Height = 32
       Action = ActionSaveProject
-      Align = alRight
       TabOrder = 0
     end
     object Panel5: TPanel
@@ -57,21 +56,23 @@ object Main: TMain
       Caption = 'Panel5'
       ShowCaption = False
       TabOrder = 1
+      ExplicitLeft = 4
+      ExplicitTop = 6
       object BtnGenerateCurrent: TButton
         AlignWithMargins = True
-        Left = 20
-        Top = 3
-        Width = 273
-        Height = 37
+        Left = 9
+        Top = 5
+        Width = 215
+        Height = 32
         Action = ActionGenerateCurrent
         TabOrder = 0
       end
       object BtnGenerateAll: TButton
         AlignWithMargins = True
-        Left = 312
-        Top = 3
-        Width = 277
-        Height = 37
+        Left = 230
+        Top = 5
+        Width = 192
+        Height = 32
         Action = ActionGenerateAll
         TabOrder = 1
       end
@@ -80,7 +81,7 @@ object Main: TMain
   object Panel12: TPanel
     Left = 0
     Top = 684
-    Width = 1166
+    Width = 1212
     Height = 87
     Align = alBottom
     BevelOuter = bvNone
@@ -89,7 +90,7 @@ object Main: TMain
     object lbLog: TListBox
       Left = 0
       Top = 0
-      Width = 1166
+      Width = 1212
       Height = 87
       Align = alClient
       BevelInner = bvNone
@@ -108,7 +109,7 @@ object Main: TMain
   object Panel3: TPanel
     Left = 0
     Top = 0
-    Width = 1166
+    Width = 1212
     Height = 681
     Align = alClient
     Caption = 'Panel3'
@@ -117,48 +118,34 @@ object Main: TMain
     object Panel4: TPanel
       Left = 1
       Top = 1
-      Width = 1164
-      Height = 151
+      Width = 1210
+      Height = 82
       Align = alTop
       BevelOuter = bvNone
       Caption = 'Panel4'
       ShowCaption = False
       TabOrder = 0
       DesignSize = (
-        1164
-        151)
+        1210
+        82)
       object btnGenEntities: TButton
         AlignWithMargins = True
-        Left = 1192
-        Top = 0
+        Left = 1238
+        Top = -69
         Width = 161
         Height = 35
         Anchors = [akRight, akBottom]
         Caption = 'Generate Entities'
         TabOrder = 0
-      end
-      object CheckBoxWithMappingRegistry: TCheckBox
-        AlignWithMargins = True
-        Left = 10
-        Top = 116
-        Width = 1151
-        Height = 32
-        Margins.Left = 10
-        Align = alBottom
-        Caption = 
-          'Register entities in ActiveRecordMappingRegistry (needed by TMVC' +
-          'ActiveRecordController)'
-        Checked = True
-        State = cbChecked
-        TabOrder = 1
-        WordWrap = True
+        ExplicitTop = 0
       end
       object RadioGroupNameCase: TRadioGroup
-        Left = 7
-        Top = 6
+        Left = 0
+        Top = 0
         Width = 354
-        Height = 104
-        Caption = 'Class MVCNameCase'
+        Height = 82
+        Align = alLeft
+        Caption = ' Class MVCNameCase '
         Columns = 3
         ItemIndex = 0
         Items.Strings = (
@@ -168,66 +155,85 @@ object Main: TMain
           'PascalCase'
           'SnakeCase'
           'AsIs')
-        TabOrder = 2
+        TabOrder = 1
+        OnClick = RadioGroupNameCaseClick
+        ExplicitLeft = 7
+        ExplicitTop = 6
+        ExplicitHeight = 104
       end
       object RadioGroupFieldNameFormatting: TRadioGroup
-        Left = 367
-        Top = 6
+        Left = 354
+        Top = 0
         Width = 355
-        Height = 104
+        Height = 82
+        Align = alLeft
         Caption = 'Property Names Formatting'
         ItemIndex = 1
         Items.Strings = (
           'Leave names as is in database table'
           'Convert names to Pascal Case (eg FirstName)')
-        TabOrder = 3
+        TabOrder = 2
+        OnClick = RadioGroupFieldNameFormattingClick
+        ExplicitLeft = 367
+        ExplicitTop = 6
+        ExplicitHeight = 104
       end
       object gbOptions: TGroupBox
-        Left = 728
-        Top = 10
-        Width = 429
-        Height = 105
-        Anchors = [akLeft, akTop, akRight]
+        Left = 709
+        Top = 0
+        Width = 501
+        Height = 82
+        Align = alClient
         Caption = 'Other Options'
-        TabOrder = 4
-        DesignSize = (
-          429
-          105)
-        object Label5: TLabel
-          Left = 31
-          Top = 29
-          Width = 324
-          Height = 42
-          Anchors = [akLeft, akTop, akRight]
+        TabOrder = 3
+        ExplicitLeft = 715
+        ExplicitTop = -6
+        ExplicitHeight = 90
+        object CheckBoxClassAsAbstract: TCheckBox
+          Left = 14
+          Top = 21
+          Width = 464
+          Height = 17
           Caption = 
             'Declare classes as abstract (MVCTable must be redeclared on desc' +
             'endant classes)'
-          WordWrap = True
-        end
-        object CheckBoxClassAsAbstract: TCheckBox
-          Left = 9
-          Top = 32
-          Width = 20
-          Height = 17
           TabOrder = 0
+          OnClick = CheckBoxClassAsAbstractClick
+        end
+        object CheckBoxWithMappingRegistry: TCheckBox
+          AlignWithMargins = True
+          Left = 13
+          Top = 44
+          Width = 413
+          Height = 32
+          Margins.Left = 10
+          Caption = 
+            'Register entities in ActiveRecordMappingRegistry (needed by TMVC' +
+            'ActiveRecordController)'
+          Checked = True
+          State = cbChecked
+          TabOrder = 1
+          WordWrap = True
+          OnClick = CheckBoxWithMappingRegistryClick
         end
       end
     end
     object Panel10: TPanel
       Left = 1
-      Top = 152
-      Width = 1164
+      Top = 83
+      Width = 1210
       Height = 51
       Align = alTop
       Caption = 'Panel10'
       ShowCaption = False
       TabOrder = 1
+      ExplicitTop = 143
       object btnGetTables: TButton
         AlignWithMargins = True
-        Left = 183
-        Top = 5
-        Width = 163
-        Height = 36
+        Left = 172
+        Top = 8
+        Width = 160
+        Height = 25
         Margins.Left = 5
         Margins.Top = 5
         Margins.Right = 5
@@ -238,10 +244,10 @@ object Main: TMain
       end
       object BtnConnectDatabase: TButton
         AlignWithMargins = True
-        Left = 10
-        Top = 5
-        Width = 163
-        Height = 36
+        Left = 2
+        Top = 8
+        Width = 160
+        Height = 25
         Margins.Left = 5
         Margins.Top = 5
         Margins.Right = 5
@@ -254,36 +260,39 @@ object Main: TMain
     object PageControl: TPageControl
       AlignWithMargins = True
       Left = 4
-      Top = 206
-      Width = 1158
-      Height = 471
+      Top = 137
+      Width = 1204
+      Height = 540
       ActivePage = TabSheetTables
       Align = alClient
       TabOrder = 2
+      ExplicitTop = 206
+      ExplicitHeight = 471
       object TabSheetTables: TTabSheet
         Caption = 'Tables'
         object Splitter2: TSplitter
           Left = 513
           Top = 0
-          Height = 394
+          Height = 469
           ExplicitLeft = 384
           ExplicitTop = 16
           ExplicitHeight = 358
         end
         object Panel7: TPanel
           Left = 0
-          Top = 394
-          Width = 1150
+          Top = 469
+          Width = 1196
           Height = 41
           Align = alBottom
           BevelOuter = bvNone
           TabOrder = 0
+          ExplicitTop = 400
         end
         object GridTables: TDBGrid
           Left = 0
           Top = 0
           Width = 513
-          Height = 394
+          Height = 469
           Align = alLeft
           DataSource = srcTables
           FixedColor = clBtnShadow
@@ -291,7 +300,7 @@ object Main: TMain
           TabOrder = 1
           TitleFont.Charset = DEFAULT_CHARSET
           TitleFont.Color = clWindowText
-          TitleFont.Height = -16
+          TitleFont.Height = -12
           TitleFont.Name = 'Segoe UI'
           TitleFont.Style = []
           OnDrawColumnCell = GridTablesDrawColumnCell
@@ -353,15 +362,15 @@ object Main: TMain
         object GridFields: TDBGrid
           Left = 516
           Top = 0
-          Width = 634
-          Height = 394
+          Width = 680
+          Height = 469
           Align = alClient
           DataSource = srcFields
           Options = [dgTitles, dgColumnResize, dgColLines, dgTabs, dgRowSelect, dgAlwaysShowSelection, dgConfirmDelete, dgCancelOnExit]
           TabOrder = 2
           TitleFont.Charset = DEFAULT_CHARSET
           TitleFont.Color = clWindowText
-          TitleFont.Height = -16
+          TitleFont.Height = -12
           TitleFont.Name = 'Segoe UI'
           TitleFont.Style = []
           OnDrawColumnCell = GridFieldsDrawColumnCell
@@ -387,8 +396,8 @@ object Main: TMain
         object MemoOutputCode: TMemo
           Left = 0
           Top = 41
-          Width = 1150
-          Height = 394
+          Width = 1196
+          Height = 469
           Align = alClient
           Font.Charset = DEFAULT_CHARSET
           Font.Color = clWindowText
@@ -399,11 +408,12 @@ object Main: TMain
           ReadOnly = True
           ScrollBars = ssBoth
           TabOrder = 0
+          ExplicitHeight = 400
         end
         object PanelSource: TPanel
           Left = 0
           Top = 0
-          Width = 1150
+          Width = 1196
           Height = 41
           Align = alTop
           Caption = 'PanelSource'
@@ -468,13 +478,13 @@ object Main: TMain
         FileMask = '*.entgen'
       end>
     Options = []
-    Left = 672
-    Top = 80
+    Left = 624
+    Top = 256
   end
   object MainMenu1: TMainMenu
     Images = ImageListMainMenu
-    Left = 312
-    Top = 16
+    Left = 320
+    Top = 192
     object File1: TMenuItem
       Caption = '&File'
       object NewProject1: TMenuItem
@@ -511,8 +521,8 @@ object Main: TMain
   end
   object ActionList: TActionList
     Images = ImageListMainMenu
-    Left = 412
-    Top = 20
+    Left = 428
+    Top = 204
     object ActionNewProject: TAction
       Caption = 'New Project'
       ImageIndex = 0
@@ -533,6 +543,7 @@ object Main: TMain
       Caption = 'Save Project As...'
       ImageIndex = 3
       OnExecute = ActionSaveProjectAsExecute
+      OnUpdate = ActionSaveProjectAsUpdate
     end
     object ActionGenerateCurrent: TAction
       Caption = 'Generate Code for Current Table'
@@ -569,15 +580,15 @@ object Main: TMain
         FileMask = '*.entgen'
       end>
     Options = [fdoOverWritePrompt, fdoStrictFileTypes, fdoPathMustExist]
-    Left = 672
-    Top = 24
+    Left = 624
+    Top = 200
   end
   object ImageListMainMenu: TImageList
     ColorDepth = cdDefault
     Height = 32
     Width = 32
-    Left = 312
-    Top = 76
+    Left = 320
+    Top = 252
     Bitmap = {
       494C01010A001800040020002000FFFFFFFF0510FFFFFFFFFFFFFFFF424D7600
       0000000000007600000028000000800000006000000001000400000000000018

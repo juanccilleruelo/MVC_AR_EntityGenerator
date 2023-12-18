@@ -14,7 +14,7 @@ uses System.Classes, System.Generics.Collections, System.Rtti, System.DateUtils,
      FireDAC.Phys.IBDef, FireDAC.Phys.IB, FireDAC.Stan.ExprFuncs, FireDAC.Phys.SQLiteDef,
      FireDAC.Phys.SQLite, FireDAC.Phys.SQLiteWrapper.Stat, FireDAC.Moni.RemoteClient,
      FireDAC.Moni.Custom, FireDAC.Moni.Base, FireDAC.Moni.FlatFile, FireDAC.Phys.SQLiteWrapper,
-     System.JSON, Data.DBXJSONReflect,
+     System.JSON, Data.DBXJSONReflect, VCL.ExtCtrls, VCL.StdCtrls,
      LoggerPro.FileAppender,
      LoggerPro.VCLListBoxAppender,
      LoggerPro;
@@ -26,10 +26,10 @@ type
     FARDB        :TFDConnection; {Link to the Database of the component editor                      }
     FConnection  :TFDConnection; {Link to the Database of work. From which we extract ActiverRecords}
 
-    FNameCase            :Integer;{ This                        }
-    FFieldNameFormatting :Integer;{       are                   }
-    FClassAsAbstract     :Boolean;{           visual            }
-    FWithMappingRegistry :Boolean;{                  properties }
+    FNameCase            :TRadioGroup;{ This                        }
+    FFieldNameFormatting :TRadioGroup;{       are                   }
+    FClassAsAbstract     :TCheckBox;  {           visual            }
+    FWithMappingRegistry :TCheckBox;  {                  properties }
 
     function IsReservedKeyword(const Value: String): Boolean;
     function GetProjectGroup: string; //IOTAProjectGroup;
@@ -93,8 +93,8 @@ type
                            const FormatAsPascalCase  :Boolean);
 
     function CreateEntGenDB:Boolean;
-    {***}function RefreshDBInfo(FormatAsPascalCase :Boolean):Boolean;
-    {***}procedure FillViewData(Tables, Fields :TFDMemTable);
+    function RefreshMetadata(FormatAsPascalCase :Boolean):Boolean;
+    procedure FillViewData(Tables, Fields :TFDMemTable);
     {***}procedure SavePendantData(Tables, Fields :TFDMemTable);
     procedure SaveCurrentViewTableToMemory(Tables :TFDMemTable);
     procedure SaveCurrentViewFieldToMemory(Fields :TFDMemTable);
@@ -105,10 +105,10 @@ type
     property Connection  :TFDConnection read FConnection  write FConnection;
     property Log         :ILogWriter    read FLog         write Flog;
 
-    property NameCase            :Integer read FNameCase            write FNameCase           ;
-    property FieldNameFormatting :Integer read FFieldNameFormatting write FFieldNameFormatting;
-    property ClassAsAbstract     :Boolean read FClassAsAbstract     write FClassAsAbstract    ;
-    property WithMappingRegistry :Boolean read FWithMappingRegistry write FWithMappingRegistry;
+    property NameCase            :TRadioGroup read FNameCase            write FNameCase           ;
+    property FieldNameFormatting :TRadioGroup read FFieldNameFormatting write FFieldNameFormatting;
+    property ClassAsAbstract     :TCheckBox   read FClassAsAbstract     write FClassAsAbstract    ;
+    property WithMappingRegistry :TCheckBox   read FWithMappingRegistry write FWithMappingRegistry;
   end;
 
 implementation
@@ -315,7 +315,7 @@ begin
    ARDB.ExecSQL('UPDATE AR_FIELDS SET EXISTENCE = ''D''');
 end;
 
-function TARGeneratorController.RefreshDBInfo(FormatAsPascalCase :Boolean):Boolean;
+function TARGeneratorController.RefreshMetadata(FormatAsPascalCase :Boolean):Boolean;
 var Qt          :TFDQuery;
     Qf          :TFDQuery;
     Tables      :TStringList;
@@ -481,8 +481,8 @@ var Q :TFDQuery;
     ClassAsAbstract     :Integer;
     WithMappingRegistry :Integer;
 begin
-   if FClassAsAbstract     then ClassAsAbstract     := 1 else ClassAsAbstract     := 0;
-   if FWithMappingRegistry then WithMappingRegistry := 1 else WithMappingRegistry := 0;
+   if FClassAsAbstract.Checked     then ClassAsAbstract     := 1 else ClassAsAbstract     := 0;
+   if FWithMappingRegistry.Checked then WithMappingRegistry := 1 else WithMappingRegistry := 0;
 
    Q := TFDQuery.Create(nil);
    Q.Connection := ARDB;
@@ -497,9 +497,9 @@ begin
                              '                           GLB_CLASS_AS_ABSTRACT     , ' +
                              '                           GLB_WITH_MAPPING_REGISTRY )  '+
                              'VALUES (%d, %d, %d, %d, %d                           );  ',
-                             [CONNECTION_INDEX    ,
-                              FNameCase           ,
-                              FFieldNameFormatting,
+                             [CONNECTION_INDEX              ,
+                              FNameCase.ItemIndex           ,
+                              FFieldNameFormatting.ItemIndex,
                               ClassAsAbstract     ,
                               WithMappingRegistry]));
       end
@@ -509,8 +509,8 @@ begin
                              '                         GLB_CLASS_AS_ABSTRACT     = %d ,  '+
                              '                         GLB_WITH_MAPPING_REGISTRY = %d    '+
                              'WHERE INDEX_ID = %d;                                       ',
-                             [FNameCase           ,
-                              FFieldNameFormatting,
+                             [FNameCase.ItemIndex           ,
+                              FFieldNameFormatting.ItemIndex,
                               ClassAsAbstract     ,
                               WithMappingRegistry ,
                               CONNECTION_INDEX    ]));
@@ -536,10 +536,10 @@ begin
    try
       { Still does not exists this row }
       if Q.IsEmpty then begin
-         NameCase            := 0;
-         FieldNameFormatting := 0;
-         ClassAsAbstract     := False;
-         WithMappingRegistry := False;
+         NameCase.ItemIndex            := 0;
+         FieldNameFormatting.ItemIndex := 0;
+         ClassAsAbstract.Checked       := False;
+         WithMappingRegistry.Checked   := False;
       end
       else begin
          QS := TFDQuery.Create(nil);
@@ -551,10 +551,10 @@ begin
                            'FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
          try
             QS.Open;
-            NameCase            := QS.FieldByName('GLB_NAME_CASE'            ).AsInteger;
-            FieldNameFormatting := QS.FieldByName('GLB_FIELD_NAME_FORMATTING').AsInteger;
-            ClassAsAbstract     := QS.FieldByName('GLB_CLASS_AS_ABSTRACT'    ).AsInteger = 1;
-            WithMappingRegistry := QS.FieldByName('GLB_WITH_MAPPING_REGISTRY').AsInteger = 1;
+            NameCase.ItemIndex            := QS.FieldByName('GLB_NAME_CASE'            ).AsInteger;
+            FieldNameFormatting.ItemIndex := QS.FieldByName('GLB_FIELD_NAME_FORMATTING').AsInteger;
+            ClassAsAbstract.Checked       := QS.FieldByName('GLB_CLASS_AS_ABSTRACT'    ).AsInteger = 1;
+            WithMappingRegistry.Checked   := QS.FieldByName('GLB_WITH_MAPPING_REGISTRY').AsInteger = 1;
          finally
             QS.Free;
          end;

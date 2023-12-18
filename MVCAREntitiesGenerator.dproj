@@ -190,7 +190,7 @@
             </Delphi.Personality>
             <Deployment Version="4">
                 <DeployFile LocalName="..\bin\MVCAREntitiesGenerator.exe" Configuration="Debug" Class="ProjectOutput"/>
-                <DeployFile LocalName="..\bin\MVCAREntitiesGenerator.exe" Configuration="Debug" Class="ProjectOutput">
+                <DeployFile LocalName="bin\MVCAREntitiesGenerator.exe" Configuration="Debug" Class="ProjectOutput">
                     <Platform Name="Win32">
                         <RemoteName>MVCAREntitiesGenerator.exe</RemoteName>
                         <Overwrite>true</Overwrite>

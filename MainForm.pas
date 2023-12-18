@@ -84,11 +84,9 @@ type
     Panel3: TPanel;
     Panel4: TPanel;
     btnGenEntities: TButton;
-    CheckBoxWithMappingRegistry: TCheckBox;
     RadioGroupNameCase: TRadioGroup;
     RadioGroupFieldNameFormatting: TRadioGroup;
     gbOptions: TGroupBox;
-    Label5: TLabel;
     CheckBoxClassAsAbstract: TCheckBox;
     Panel10: TPanel;
     btnGetTables: TButton;
@@ -104,6 +102,7 @@ type
     PanelSource: TPanel;
     FDSQLiteBackup1: TFDSQLiteBackup;
     ActionConnectDatabase: TAction;
+    CheckBoxWithMappingRegistry: TCheckBox;
     procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure ActionOpenProjectExecute(Sender: TObject);
@@ -123,6 +122,11 @@ type
     procedure ActionConnectDatabaseUpdate(Sender: TObject);
     procedure ActionRefreshMetadataExecute(Sender: TObject);
     procedure ActionRefreshMetadataUpdate(Sender: TObject);
+    procedure RadioGroupNameCaseClick(Sender: TObject);
+    procedure RadioGroupFieldNameFormattingClick(Sender: TObject);
+    procedure CheckBoxClassAsAbstractClick(Sender: TObject);
+    procedure CheckBoxWithMappingRegistryClick(Sender: TObject);
+    procedure ActionSaveProjectAsUpdate(Sender: TObject);
   private
     FProjectName :string;
     FModified    :Boolean; {Changes not saved on disk}
@@ -130,6 +134,8 @@ type
     Controller   :TARGeneratorController; {Controller of this project}
     procedure ResetUI;
     procedure SetOnViewDataFromMemory;
+    procedure DisableVisualEvents;
+    procedure EnableVisualEvents;
   public
   end;
 
@@ -182,12 +188,33 @@ begin
    DBConnection.Params.Text := '';
    DBConnection.DriverName  := '';
    DBConnection.LoginPrompt := False;
-   Controller.Connection := DBConnection;
+
+   Controller.Connection          := DBConnection;
+   Controller.NameCase            := RadioGroupNameCase;
+   Controller.FieldNameFormatting := RadioGroupFieldNameFormatting;
+   Controller.ClassAsAbstract     := CheckBoxClassAsAbstract;
+   Controller.WithMappingRegistry := CheckBoxWithMappingRegistry;
 end;
 
 procedure TMain.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
    Controller.Free;
+end;
+
+procedure TMain.DisableVisualEvents;
+begin
+   RadioGroupNameCase.OnClick            := nil;
+   RadioGroupFieldNameFormatting.OnClick := nil;
+   CheckBoxClassAsAbstract.OnClick       := nil;
+   CheckBoxWithMappingRegistry.OnClick   := nil;
+end;
+
+procedure TMain.EnableVisualEvents;
+begin
+   RadioGroupNameCase.OnClick            := RadioGroupNameCaseClick;
+   RadioGroupFieldNameFormatting.OnClick := RadioGroupFieldNameFormattingClick;
+   CheckBoxClassAsAbstract.OnClick       := CheckBoxClassAsAbstractClick;
+   CheckBoxWithMappingRegistry.OnClick   := CheckBoxWithMappingRegistryClick;
 end;
 
 procedure TMain.GridTablesDblClick(Sender: TObject);
@@ -232,6 +259,7 @@ begin
       if FDConnEditor.Execute(DBConnection, 'Connect to Database', nil) then begin
          DBConnection.Open; {No exception management. The user is a programmer. Don't forget it!}
          ActionRefreshMetadata.Execute;
+         FModified := True;
       end;
    finally
       FDConnEditor.Free;
@@ -385,7 +413,6 @@ begin
                      (* if Controller.LoadProject(ProjectName) then begin
                         FProjectName := TempProjectName;
                         ActionRefreshMetadata.Execute;
-                        Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
                         Log.Info('Project '+FProjectName+' loaded from disk.', LOG_TAG);
                      end
                      else begin
@@ -402,40 +429,27 @@ begin
          end;
       end;
 
-
-
-      if Controller.LoadProject(FProjectName) then begin
-
-         RadioGroupNameCase.ItemIndex            := Controller.NameCase;
-         RadioGroupFieldNameFormatting.ItemIndex := Controller.FieldNameFormatting;
-         CheckBoxClassAsAbstract.Checked         := Controller.ClassAsAbstract;
-         CheckBoxWithMappingRegistry.Checked     := Controller.WithMappingRegistry;
-
-         dsTables.Open;
-         dsFields.Open;
-         SetOnViewDataFromMemory;
-
-         {$Message Warn 'Set all the things in his place'}
+      DisableVisualEvents;
+      try
+         if Controller.LoadProject(FProjectName) then begin
+            dsTables.Open;
+            dsFields.Open;
+            SetOnViewDataFromMemory;
+            DBConnection.Open;
+            FModified := False;
+            Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+         end;
+      finally
+         EnableVisualEvents;
       end;
 
 
-      //if not TFile.Exists(FProjectName) then Exit;
-
-      //ActionRefreshDBInfo.Execute;
-
-      //RadioGroupNameCase.ItemIndex            := FConfig.I[RadioGroupNameCase.Name];
-      //RadioGroupFieldNameFormatting.ItemIndex := FConfig.I[RadioGroupFieldNameFormatting.Name];
-      //CheckBoxWithMappingRegistry.Checked     := FConfig.B[CheckBoxWithMappingRegistry.Name];
-
-      //EditOutputFileName.Text := FConfig.S[EditOutputFileName.Name];
-
-      FModified := False;
    end;
 end;
 
 procedure TMain.ActionRefreshMetadataExecute(Sender: TObject);
 begin
-   Controller.RefreshDBInfo(RadioGroupFieldNameFormatting.ItemIndex = 1);
+   Controller.RefreshMetadata(RadioGroupFieldNameFormatting.ItemIndex = 1);
    SetOnViewDataFromMemory;
 end;
 
@@ -485,27 +499,20 @@ begin
    if DialogSaveProject.Execute then begin
       FProjectName := DialogSaveProject.FileName;
       Controller.SaveProject(FProjectName);
+      FModified := False;
    end;
 end;
 
+procedure TMain.ActionSaveProjectAsUpdate(Sender: TObject);
+begin
+   ActionSaveProjectAs.Enabled := FModified;
+end;
+
 procedure TMain.ActionSaveProjectExecute(Sender: TObject);
-var MarkTable       :TBookmark;
-    MarkField       :TBookmark;
+var //MarkTable       :TBookmark;
+    //MarkField       :TBookmark;
     tempProjectName :string;
 begin
-   Controller.NameCase            := RadioGroupNameCase.ItemIndex;
-   Controller.FieldNameFormatting := RadioGroupFieldNameFormatting.ItemIndex;
-   Controller.ClassAsAbstract     := CheckBoxClassAsAbstract.Checked;
-   Controller.WithMappingRegistry := CheckBoxWithMappingRegistry.Checked;
-
-(*var Field :TField;
-begin
-   FConfig.I[RadioGroupNameCase.Name           ] := RadioGroupNameCase.ItemIndex;
-   FConfig.I[RadioGroupFieldNameFormatting.Name] := RadioGroupFieldNameFormatting.ItemIndex;
-   FConfig.B[CheckBoxWithMappingRegistry.Name  ] := CheckBoxWithMappingRegistry.Checked;
-   //FConfig.S[EditOutputFileName.Name] := EditOutputFileName.Text;
-*)
-
    {Saves all the pendant changes to memory database}
    { Save current positions }
    {$Message Warn 'This is actually necessary? We save each change at the moment.'}
@@ -539,6 +546,7 @@ begin
          case MessageDlg(Format('The project "%s" previusly exists. Overwrite it?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
             mrYes: begin
                if Controller.SaveProject(TempProjectName) then begin
+                  FModified    := False;
                   FProjectName := TempProjectName;
                   ActionRefreshMetadata.Execute;
                   Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
@@ -557,6 +565,7 @@ begin
       end
       else begin
          if Controller.SaveProject(TempProjectName) then begin
+            FModified    := False;
             FProjectName := TempProjectName;
             ActionRefreshMetadata.Execute;
             Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
@@ -570,6 +579,7 @@ begin
    end
    else begin
       Controller.SaveProject(FProjectName);
+      FModified := False;
       ActionRefreshMetadata.Execute;
       Log.Info(Format('Database %s saved on disk', [FProjectName]), LOG_TAG);
    end;
@@ -578,6 +588,16 @@ end;
 procedure TMain.ActionSaveProjectUpdate(Sender: TObject);
 begin
    ActionSaveProject.Enabled := FModified;
+end;
+
+procedure TMain.CheckBoxClassAsAbstractClick(Sender: TObject);
+begin
+   FModified := True;
+end;
+
+procedure TMain.CheckBoxWithMappingRegistryClick(Sender: TObject);
+begin
+   FModified := True;
 end;
 
 procedure TMain.GridFieldsDblClick(Sender: TObject);
@@ -612,6 +632,16 @@ begin
    GridFields.Columns[0].Title.Color := clBtnShadow;
    GridFields.Columns[1].Title.Color := clBtnShadow;
    GridFields.Columns[0].Color       := clBtnShadow;
+end;
+
+procedure TMain.RadioGroupFieldNameFormattingClick(Sender: TObject);
+begin
+   FModified := True;
+end;
+
+procedure TMain.RadioGroupNameCaseClick(Sender: TObject);
+begin
+   FModified := True;
 end;
 
 procedure TMain.ResetUI;
