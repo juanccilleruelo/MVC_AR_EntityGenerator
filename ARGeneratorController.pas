@@ -25,12 +25,22 @@ type
     FLog         :ILogWriter;
     FARDB        :TFDConnection; {Link to the Database of the component editor                      }
     FConnection  :TFDConnection; {Link to the Database of work. From which we extract ActiverRecords}
+
+    FNameCase            :Integer;{ This                        }
+    FFieldNameFormatting :Integer;{       are                   }
+    FClassAsAbstract     :Boolean;{           visual            }
+    FWithMappingRegistry :Boolean;{                  properties }
+
     function IsReservedKeyword(const Value: String): Boolean;
     function GetProjectGroup: string; //IOTAProjectGroup;
     function GetFolderName(const ATableName : string):string;
     function GetDeployPath(const AFolderName: string):string;
 
     procedure ClearAllExists;
+    procedure SaveVisualData;
+    procedure RestoreVisualData;
+    procedure SaveDBConnectionInfo;
+    procedure RestoreDBConnectionInfo;
 
     function  Col(Text :string; Spaces :Integer):string;
     procedure InsertComment(IntfCode :TStringStream);
@@ -83,7 +93,6 @@ type
                            const FormatAsPascalCase  :Boolean);
 
     function CreateEntGenDB:Boolean;
-    procedure SaveDBConnectionInfo;
     {***}function RefreshDBInfo(FormatAsPascalCase :Boolean):Boolean;
     {***}procedure FillViewData(Tables, Fields :TFDMemTable);
     {***}procedure SavePendantData(Tables, Fields :TFDMemTable);
@@ -95,6 +104,11 @@ type
     property ARDB        :TFDConnection read FARDB        write FARDB;
     property Connection  :TFDConnection read FConnection  write FConnection;
     property Log         :ILogWriter    read FLog         write Flog;
+
+    property NameCase            :Integer read FNameCase            write FNameCase           ;
+    property FieldNameFormatting :Integer read FFieldNameFormatting write FFieldNameFormatting;
+    property ClassAsAbstract     :Boolean read FClassAsAbstract     write FClassAsAbstract    ;
+    property WithMappingRegistry :Boolean read FWithMappingRegistry write FWithMappingRegistry;
   end;
 
 implementation
@@ -143,10 +157,13 @@ begin
    {Creates an Empty File for next times}
    ARDB.Connected := True;
    ARDB.ExecSQL('CREATE TABLE AR_CONNECTION (              ' +
-                '  INDEX_ID           INTEGER PRIMARY KEY, ' + {The table needs a PK }
-                '  DRIVER_NAME        TEXT               , ' + {DriverName           }
-                '  LOGIN_PROMPT       TEXT               , ' + {LoginPrompt          }
-                '  PARAMS             TEXT                 ' + {Params               }
+                '  INDEX_ID                  INTEGER PRIMARY KEY, ' + {The table needs a PK }
+                '  DRIVER_NAME               TEXT               , ' + {DriverName           }
+                '  PARAMS                    TEXT               , ' + {Params               }
+                '  GLB_NAME_CASE             INTEGER            , ' + {Visual                        }
+                '  GLB_FIELD_NAME_FORMATTING INTEGER            , ' + {       properties             }
+                '  GLB_CLASS_AS_ABSTRACT     INTEGER            , ' + {                  of the      }
+                '  GLB_WITH_MAPPING_REGISTRY INTEGER               '+ {                         view }
                 ');                                        ');
 
    ARDB.ExecSQL('CREATE TABLE AR_TABLES (                 ' +
@@ -208,10 +225,51 @@ begin
    end;
 end;
 
+procedure TARGeneratorController.RestoreDBConnectionInfo;
+var Q  :TFDQuery;
+    QS :TFDQuery;
+begin
+
+   Q := TFDQuery.Create(nil);
+   Q.Connection := ARDB;
+   Q.SQL.Add(Format('SELECT INDEX_ID FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
+   Q.Open;
+   try
+      { Still does not exists this row }
+      if Q.IsEmpty then begin
+
+      end
+      else begin
+         QS := TFDQuery.Create(nil);
+         QS.Connection := ARDB;
+         QS.SQL.Add(Format('SELECT DRIVER_NAME                    , ' +
+                           '       PARAMS                           ' +
+                           'FROM AR_CONNECTION WHERE INDEX_ID = %d  ', [CONNECTION_INDEX]));
+         try
+            QS.Open;
+            Connection.DriverName  := QS.FieldByName('DRIVER_NAME').AsString;
+            Connection.Params.Text := QS.FieldByName('PARAMS'     ).AsString;
+         finally
+            QS.Free;
+         end;
+      end;
+   finally
+      {Seems to be a problem with this instruction.
+       If I uncomment it the Connection will be not accessible.
+       Is like if Q.Free liberates too Connection.
+       I tried to communicate this bug to Embarcadero but the quality.embarcadero.com is not working
+      }
+      //Q.Free;
+   end;
+end;
+
 function TARGeneratorController.SaveProject(ProjectName :string):Boolean;
 var BackupDB :TFDSQLiteBackup;
     DLink    :TFDPhysSQLiteDriverLink;
 begin
+   SaveVisualData;
+   SaveDBConnectionInfo;
+
    {We are sure that the target database does not exists or we want overwrite it}
    DLink    := TFDPhysSQLiteDriverLink.Create(nil);
    BackupDB := TFDSQLiteBackup.Create(nil);
@@ -246,6 +304,9 @@ begin
    finally
       RestoreDB.Free;
    end;
+
+   RestoreVisualData;
+   RestoreDBConnectionInfo;
 end;
 
 procedure TARGeneratorController.ClearAllExists;
@@ -412,6 +473,99 @@ begin
    finally
       Qf.Free;
       Qt.Free;
+   end;
+end;
+
+procedure TARGeneratorController.SaveVisualData;
+var Q :TFDQuery;
+    ClassAsAbstract     :Integer;
+    WithMappingRegistry :Integer;
+begin
+   if FClassAsAbstract     then ClassAsAbstract     := 1 else ClassAsAbstract     := 0;
+   if FWithMappingRegistry then WithMappingRegistry := 1 else WithMappingRegistry := 0;
+
+   Q := TFDQuery.Create(nil);
+   Q.Connection := ARDB;
+   Q.SQL.Add(Format('SELECT INDEX_ID FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
+   Q.Open;
+   try
+      { Still does not exists this row }
+      if Q.IsEmpty then begin
+         ARDB.ExecSQL(Format('INSERT INTO AR_CONNECTION (INDEX_ID                  , ' +
+                             '                           GLB_NAME_CASE             , ' +
+                             '                           GLB_FIELD_NAME_FORMATTING , ' +
+                             '                           GLB_CLASS_AS_ABSTRACT     , ' +
+                             '                           GLB_WITH_MAPPING_REGISTRY )  '+
+                             'VALUES (%d, %d, %d, %d, %d                           );  ',
+                             [CONNECTION_INDEX    ,
+                              FNameCase           ,
+                              FFieldNameFormatting,
+                              ClassAsAbstract     ,
+                              WithMappingRegistry]));
+      end
+      else begin
+         ARDB.ExecSQL(Format('UPDATE AR_CONNECTION SET GLB_NAME_CASE             = %d ,  '+
+                             '                         GLB_FIELD_NAME_FORMATTING = %d ,  '+
+                             '                         GLB_CLASS_AS_ABSTRACT     = %d ,  '+
+                             '                         GLB_WITH_MAPPING_REGISTRY = %d    '+
+                             'WHERE INDEX_ID = %d;                                       ',
+                             [FNameCase           ,
+                              FFieldNameFormatting,
+                              ClassAsAbstract     ,
+                              WithMappingRegistry ,
+                              CONNECTION_INDEX    ]));
+      end;
+   finally
+      {Seems to be a problem with this instruction.
+       If I uncomment it the Connection will be not accessible.
+       Is like if Q.Free liberates too Connection.
+       I tried to communicate this bug to Embarcadero but the quality.embarcadero.com is not working
+      }
+      //Q.Free;
+   end;
+end;
+
+procedure TARGeneratorController.RestoreVisualData;
+var Q  :TFDQuery;
+    QS :TFDQuery;
+begin
+   Q := TFDQuery.Create(nil);
+   Q.Connection := ARDB;
+   Q.SQL.Add(Format('SELECT INDEX_ID FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
+   Q.Open;
+   try
+      { Still does not exists this row }
+      if Q.IsEmpty then begin
+         NameCase            := 0;
+         FieldNameFormatting := 0;
+         ClassAsAbstract     := False;
+         WithMappingRegistry := False;
+      end
+      else begin
+         QS := TFDQuery.Create(nil);
+         QS.Connection := ARDB;
+         QS.SQL.Add(Format('SELECT GLB_NAME_CASE            ,      ' +
+                           '       GLB_FIELD_NAME_FORMATTING,      ' +
+                           '       GLB_CLASS_AS_ABSTRACT    ,      ' +
+                           '       GLB_WITH_MAPPING_REGISTRY       ' +
+                           'FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
+         try
+            QS.Open;
+            NameCase            := QS.FieldByName('GLB_NAME_CASE'            ).AsInteger;
+            FieldNameFormatting := QS.FieldByName('GLB_FIELD_NAME_FORMATTING').AsInteger;
+            ClassAsAbstract     := QS.FieldByName('GLB_CLASS_AS_ABSTRACT'    ).AsInteger = 1;
+            WithMappingRegistry := QS.FieldByName('GLB_WITH_MAPPING_REGISTRY').AsInteger = 1;
+         finally
+            QS.Free;
+         end;
+      end;
+   finally
+      {Seems to be a problem with this instruction.
+       If I uncomment it the Connection will be not accessible.
+       Is like if Q.Free liberates too Connection.
+       I tried to communicate this bug to Embarcadero but the quality.embarcadero.com is not working
+      }
+      //Q.Free;
    end;
 end;
 

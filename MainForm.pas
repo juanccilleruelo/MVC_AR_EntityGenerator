@@ -45,16 +45,14 @@ type
     Saveprojectas1: TMenuItem;
     Exit1: TMenuItem;
     N1: TMenuItem;
-    ActionRefreshDBInfo: TAction;
+    ActionRefreshMetadata: TAction;
     DialogSaveProject: TFileSaveDialog;
     ActionNewProject: TAction;
     NewProject1: TMenuItem;
     ImageListMainMenu: TImageList;
     Entities1: TMenuItem;
-    RefreshCatalog1: TMenuItem;
-    RefreshTableList1: TMenuItem;
-    GenerateCode1: TMenuItem;
-    SaveGeneratedCode1: TMenuItem;
+    RefreshMetadata: TMenuItem;
+    GenerateCodeCurrent: TMenuItem;
     Panel12: TPanel;
     lbLog: TListBox;
     Splitter1: TSplitter;
@@ -123,16 +121,16 @@ type
     procedure ActionGenerateAllUpdate(Sender: TObject);
     procedure ActionConnectDatabaseExecute(Sender: TObject);
     procedure ActionConnectDatabaseUpdate(Sender: TObject);
-    procedure ActionRefreshDBInfoExecute(Sender: TObject);
-    procedure ActionRefreshDBInfoUpdate(Sender: TObject);
+    procedure ActionRefreshMetadataExecute(Sender: TObject);
+    procedure ActionRefreshMetadataUpdate(Sender: TObject);
   private
     FProjectName :string;
     FModified    :Boolean; {Changes not saved on disk}
     Log          :ILogWriter;
     Controller   :TARGeneratorController; {Controller of this project}
     procedure ResetUI;
+    procedure SetOnViewDataFromMemory;
   public
-    property ProjectName :string read FProjectName write FProjectName;
   end;
 
 var
@@ -233,8 +231,7 @@ begin
    try
       if FDConnEditor.Execute(DBConnection, 'Connect to Database', nil) then begin
          DBConnection.Open; {No exception management. The user is a programmer. Don't forget it!}
-         Controller.SaveDBConnectionInfo();
-         ActionRefreshDBInfo.Execute;
+         ActionRefreshMetadata.Execute;
       end;
    finally
       FDConnEditor.Free;
@@ -370,23 +367,59 @@ begin
 end;
 
 procedure TMain.ActionOpenProjectExecute(Sender: TObject);
-//var i :Integer;
-//    j :Integer;
 begin
    ProjectOpenDialog.DefaultExtension := 'entgen';
    if ProjectOpenDialog.Execute then begin
-      ProjectName := ProjectOpenDialog.FileName;
+      FProjectName := ProjectOpenDialog.FileName;
 
       {$Message Warn 'Check that is appropiated lost the current project}
+      if DBConnection.Connected then begin
+         if FModified then begin
+            case MessageDlg(Format('Do you want to save the current changes before?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
+               mrYes: begin
+                  if FProjectName <> DEFAULT_PROJECT_NAME then begin
+                     {There is a project opened.}
 
-      Controller.LoadProject(ProjectName);
-      dsTables.Open;
-      dsFields.Open;
-      {$Message Warn 'Set all the things in his place'}
+                  end
+                  else begin
+                     (* if Controller.LoadProject(ProjectName) then begin
+                        FProjectName := TempProjectName;
+                        ActionRefreshMetadata.Execute;
+                        Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+                        Log.Info('Project '+FProjectName+' loaded from disk.', LOG_TAG);
+                     end
+                     else begin
+                        Log.Info('Project '+FProjectName+' failed to be loaded from disk.', LOG_TAG);
+                        raise Exception.Create('Error loading data');
+                     end;*)
+                  end;
+               end;
+               mrCancel: begin { Abort the saving process }
+                  Log.Info('Operation of create a new Project canceled by thee user', LOG_TAG);
+                  Caption := Format('DMVCFramework Entities Generator :: (Without project open)', [FProjectName, DMVCFRAMEWORK_VERSION]);
+               end;
+            end;
+         end;
+      end;
 
-      ResetUI;
 
-      if not TFile.Exists(FProjectName) then Exit;
+
+      if Controller.LoadProject(FProjectName) then begin
+
+         RadioGroupNameCase.ItemIndex            := Controller.NameCase;
+         RadioGroupFieldNameFormatting.ItemIndex := Controller.FieldNameFormatting;
+         CheckBoxClassAsAbstract.Checked         := Controller.ClassAsAbstract;
+         CheckBoxWithMappingRegistry.Checked     := Controller.WithMappingRegistry;
+
+         dsTables.Open;
+         dsFields.Open;
+         SetOnViewDataFromMemory;
+
+         {$Message Warn 'Set all the things in his place'}
+      end;
+
+
+      //if not TFile.Exists(FProjectName) then Exit;
 
       //ActionRefreshDBInfo.Execute;
 
@@ -400,10 +433,14 @@ begin
    end;
 end;
 
-procedure TMain.ActionRefreshDBInfoExecute(Sender: TObject);
+procedure TMain.ActionRefreshMetadataExecute(Sender: TObject);
 begin
    Controller.RefreshDBInfo(RadioGroupFieldNameFormatting.ItemIndex = 1);
+   SetOnViewDataFromMemory;
+end;
 
+procedure TMain.SetOnViewDataFromMemory;
+begin
    {Fill with data from Database}
    dsTables.DisableControls;
    dsFields.DisableControls;
@@ -416,9 +453,9 @@ begin
    end;
 end;
 
-procedure TMain.ActionRefreshDBInfoUpdate(Sender: TObject);
+procedure TMain.ActionRefreshMetadataUpdate(Sender: TObject);
 begin
-   ActionRefreshDBInfo.Enabled := ARDB.Connected and DBConnection.Connected;
+   ActionRefreshMetadata.Enabled := ARDB.Connected and DBConnection.Connected;
 end;
 
 procedure TMain.ActionNewProjectExecute(Sender: TObject);
@@ -436,9 +473,9 @@ begin
       Controller.CreateEntGenDB;
       dsTables.Open;
       dsFields.Open;
-      ProjectName := NOT_SAVED_PROJECT_NAME;
-      FModified   := True;
-      Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+      FProjectName := NOT_SAVED_PROJECT_NAME;
+      FModified    := True;
+      Caption      := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
       Log.Info('Created and empty project', LOG_TAG);
    end;
 end;
@@ -446,8 +483,8 @@ end;
 procedure TMain.ActionSaveProjectAsExecute(Sender: TObject);
 begin
    if DialogSaveProject.Execute then begin
-      ProjectName := DialogSaveProject.FileName;
-      //Controlelr.SaveProject;
+      FProjectName := DialogSaveProject.FileName;
+      Controller.SaveProject(FProjectName);
    end;
 end;
 
@@ -456,36 +493,23 @@ var MarkTable       :TBookmark;
     MarkField       :TBookmark;
     tempProjectName :string;
 begin
+   Controller.NameCase            := RadioGroupNameCase.ItemIndex;
+   Controller.FieldNameFormatting := RadioGroupFieldNameFormatting.ItemIndex;
+   Controller.ClassAsAbstract     := CheckBoxClassAsAbstract.Checked;
+   Controller.WithMappingRegistry := CheckBoxWithMappingRegistry.Checked;
 
-
-(*var JObj  :TJSONObject;
-    Field :TField;
+(*var Field :TField;
 begin
    FConfig.I[RadioGroupNameCase.Name           ] := RadioGroupNameCase.ItemIndex;
    FConfig.I[RadioGroupFieldNameFormatting.Name] := RadioGroupFieldNameFormatting.ItemIndex;
    FConfig.B[CheckBoxWithMappingRegistry.Name  ] := CheckBoxWithMappingRegistry.Checked;
    //FConfig.S[EditOutputFileName.Name] := EditOutputFileName.Text;
+*)
 
-   fConfig.Remove('tables');
-   DTables.First;
-   while not DTables.Eof do begin
-      JObj := fConfig.A['tables'].AddObject;
-      for Field in DTables.Fields do begin
-         JObj.S[Field.FieldName] := Field.AsString;
-      end;
-      DTables.Next;
-   end;
-
-   DTables.First;
-   FConfig.SaveToFile(FProjectName, False); *)
-
-
-
-
-
-   {First, saves all the pendant changes to memory database}
+   {Saves all the pendant changes to memory database}
    { Save current positions }
-   MarkTable := dsTables.GetBookmark;
+   {$Message Warn 'This is actually necessary? We save each change at the moment.'}
+   (*MarkTable := dsTables.GetBookmark;
    MarkField := dsFields.GetBookmark;
    dsTables.DisableControls;
    dsFields.DisableControls;
@@ -500,9 +524,9 @@ begin
       dsFields.EnableControls;
       dsTables.FreeBookmark(MarkTable);
       dsFields.FreeBookmark(MarkField);
-   end;
+   end;*)
 
-   if ProjectName = NOT_SAVED_PROJECT_NAME then begin
+   if FProjectName = NOT_SAVED_PROJECT_NAME then begin
       {Get the desired project name}
       DialogSaveProject.DefaultFolder := ExtractFilePath(ParamStr(0));
       DialogSaveProject.FileName      := DEFAULT_PROJECT_NAME;
@@ -516,7 +540,7 @@ begin
             mrYes: begin
                if Controller.SaveProject(TempProjectName) then begin
                   FProjectName := TempProjectName;
-                  ActionRefreshDBInfo.Execute;
+                  ActionRefreshMetadata.Execute;
                   Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
                   Log.Info('Project '+FProjectName+' rewrited on disk.', LOG_TAG);
                end
@@ -534,7 +558,7 @@ begin
       else begin
          if Controller.SaveProject(TempProjectName) then begin
             FProjectName := TempProjectName;
-            ActionRefreshDBInfo.Execute;
+            ActionRefreshMetadata.Execute;
             Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
             Log.Info('Project '+FProjectName+' save to file for the first time.', LOG_TAG);
          end
@@ -546,7 +570,7 @@ begin
    end
    else begin
       Controller.SaveProject(FProjectName);
-      ActionRefreshDBInfo.Execute;
+      ActionRefreshMetadata.Execute;
       Log.Info(Format('Database %s saved on disk', [FProjectName]), LOG_TAG);
    end;
 end;
@@ -584,18 +608,20 @@ end;
 
 procedure TMain.GridFieldsDrawColumnCell(Sender: TObject; const Rect: TRect; DataCol: Integer; Column: TColumn; State: TGridDrawState);
 begin
-   GridFields.DrawingStyle := gdsClassic;
+   GridFields.DrawingStyle           := gdsClassic;
    GridFields.Columns[0].Title.Color := clBtnShadow;
    GridFields.Columns[1].Title.Color := clBtnShadow;
-
-   GridFields.Columns[0].Color := clBtnShadow;
+   GridFields.Columns[0].Color       := clBtnShadow;
 end;
 
 procedure TMain.ResetUI;
 begin
    RadioGroupNameCase.ItemIndex            := 0;
    RadioGroupFieldNameFormatting.ItemIndex := 0;
+   CheckBoxClassAsAbstract.Checked         := False;
    CheckBoxWithMappingRegistry.Checked     := False;
+
+   dsFields.EmptyDataSet;
    dsTables.EmptyDataSet;
 end;
 
