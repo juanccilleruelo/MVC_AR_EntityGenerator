@@ -10,7 +10,7 @@ object Main: TMain
   Font.Height = -12
   Font.Name = 'Segoe UI'
   Font.Style = []
-  Menu = MainMenu1
+  Menu = MainMenu
   Position = poDesktopCenter
   Scaled = False
   OnClose = FormClose
@@ -481,40 +481,40 @@ object Main: TMain
     Left = 624
     Top = 256
   end
-  object MainMenu1: TMainMenu
+  object MainMenu: TMainMenu
     Images = ImageListMainMenu
     Left = 320
     Top = 192
-    object File1: TMenuItem
+    object MenuItemFile: TMenuItem
       Caption = '&File'
-      object NewProject1: TMenuItem
+      object MenuItemNewProject: TMenuItem
         Action = ActionNewProject
       end
-      object LoadProject1: TMenuItem
+      object MenuItemLoadProject: TMenuItem
         Action = ActionOpenProject
       end
-      object SaveProject1: TMenuItem
+      object MenuItemSaveProject: TMenuItem
         Action = ActionSaveProject
       end
-      object Saveprojectas1: TMenuItem
+      object MenuItemSaveProjectAs: TMenuItem
         Action = ActionSaveProjectAs
       end
       object N1: TMenuItem
         Caption = '-'
       end
-      object Exit1: TMenuItem
+      object MenuItemExit: TMenuItem
         Caption = 'E&xit'
         Hint = 'Exit|Quits the application'
         ImageIndex = 0
       end
     end
-    object Entities1: TMenuItem
+    object MenuItemEntities: TMenuItem
       Caption = '&Entities'
-      object RefreshMetadata: TMenuItem
+      object MenuItemRefreshMetaData: TMenuItem
         Action = ActionRefreshMetadata
         ImageIndex = 5
       end
-      object GenerateCodeCurrent: TMenuItem
+      object MenuItemGenerateCodeCurrent: TMenuItem
         Action = ActionGenerateCurrent
       end
     end
@@ -574,6 +574,7 @@ object Main: TMain
   end
   object DialogSaveProject: TFileSaveDialog
     FavoriteLinks = <>
+    FileName = 'C:\Views\MVC_AR_EntityGenerator'
     FileTypes = <
       item
         DisplayName = 'DMVC Entities Generator'

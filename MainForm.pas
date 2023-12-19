@@ -34,25 +34,25 @@ type
     Panel8: TPanel;
     BtnSaveProject: TButton;
     ProjectOpenDialog: TFileOpenDialog;
-    MainMenu1: TMainMenu;
+    MainMenu: TMainMenu;
     ActionList: TActionList;
     ActionOpenProject: TAction;
     ActionSaveProject: TAction;
     ActionSaveProjectAs: TAction;
-    File1: TMenuItem;
-    LoadProject1: TMenuItem;
-    SaveProject1: TMenuItem;
-    Saveprojectas1: TMenuItem;
-    Exit1: TMenuItem;
+    MenuItemFile: TMenuItem;
+    MenuItemLoadProject: TMenuItem;
+    MenuItemSaveProject: TMenuItem;
+    MenuItemSaveProjectAs: TMenuItem;
+    MenuItemExit: TMenuItem;
     N1: TMenuItem;
     ActionRefreshMetadata: TAction;
     DialogSaveProject: TFileSaveDialog;
     ActionNewProject: TAction;
-    NewProject1: TMenuItem;
+    MenuItemNewProject: TMenuItem;
     ImageListMainMenu: TImageList;
-    Entities1: TMenuItem;
-    RefreshMetadata: TMenuItem;
-    GenerateCodeCurrent: TMenuItem;
+    MenuItemEntities: TMenuItem;
+    MenuItemRefreshMetaData: TMenuItem;
+    MenuItemGenerateCodeCurrent: TMenuItem;
     Panel12: TPanel;
     lbLog: TListBox;
     Splitter1: TSplitter;
@@ -145,7 +145,7 @@ var
 const
    DEFAULT_PROJECT_NAME   = 'EntitiesDB.entgen';
    LOG_TAG                = 'generator';
-   NOT_SAVED_PROJECT_NAME = 'Not Saved';
+   NOT_SAVED_PROJECT_NAME = 'Untitled.entgen';
 
 implementation
 
@@ -168,6 +168,8 @@ var UILogFormat :string;
 begin
    FModified    := False;
    FProjectName := '';
+
+   ProjectOpenDialog.DefaultExtension := 'entgen';
 
    {Configures LoggerPro}
    UILogFormat := '%0:s [%2:-10s] %3:s';
@@ -225,14 +227,16 @@ begin
    EditTable := TEditTableForm.Create(nil);
    try
       // Configure the properties of the form before show it.
-      EditTable.TableName := dsTablesTABLE_NAME.AsString;
-      EditTable.ClassName := dsTablesCLASS_NAME.AsString;
+      EditTable.TableName  := dsTablesTABLE_NAME.AsString;
+      EditTable.ClassName  := dsTablesCLASS_NAME.AsString;
+      EditTable.DeployPath := dsTablesDEPLOY_PATH.AsString;
 
       // Show the form in Modal state
       if EditTable.ShowModal = mrOK then begin
          // Recover the data modified after close the form.
          dsTables.Edit;
-         dsTablesCLASS_NAME.AsString := EditTable.ClassName;
+         dsTablesCLASS_NAME.AsString  := EditTable.ClassName;
+         dsTablesDEPLOY_PATH.AsString := EditTable.DeployPath;
          dsTables.Post;
          Controller.SaveCurrentViewTableToMemory(dsTables);
          FModified := True;
@@ -394,59 +398,6 @@ begin
    ActionGenerateCurrent.Enabled := not FProjectName.IsEmpty;
 end;
 
-procedure TMain.ActionOpenProjectExecute(Sender: TObject);
-begin
-   ProjectOpenDialog.DefaultExtension := 'entgen';
-   if ProjectOpenDialog.Execute then begin
-      FProjectName := ProjectOpenDialog.FileName;
-
-      {$Message Warn 'Check that is appropiated lost the current project}
-      if DBConnection.Connected then begin
-         if FModified then begin
-            case MessageDlg(Format('Do you want to save the current changes before?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
-               mrYes: begin
-                  if FProjectName <> DEFAULT_PROJECT_NAME then begin
-                     {There is a project opened.}
-
-                  end
-                  else begin
-                     (* if Controller.LoadProject(ProjectName) then begin
-                        FProjectName := TempProjectName;
-                        ActionRefreshMetadata.Execute;
-                        Log.Info('Project '+FProjectName+' loaded from disk.', LOG_TAG);
-                     end
-                     else begin
-                        Log.Info('Project '+FProjectName+' failed to be loaded from disk.', LOG_TAG);
-                        raise Exception.Create('Error loading data');
-                     end;*)
-                  end;
-               end;
-               mrCancel: begin { Abort the saving process }
-                  Log.Info('Operation of create a new Project canceled by thee user', LOG_TAG);
-                  Caption := Format('DMVCFramework Entities Generator :: (Without project open)', [FProjectName, DMVCFRAMEWORK_VERSION]);
-               end;
-            end;
-         end;
-      end;
-
-      DisableVisualEvents;
-      try
-         if Controller.LoadProject(FProjectName) then begin
-            dsTables.Open;
-            dsFields.Open;
-            SetOnViewDataFromMemory;
-            DBConnection.Open;
-            FModified := False;
-            Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-         end;
-      finally
-         EnableVisualEvents;
-      end;
-
-
-   end;
-end;
-
 procedure TMain.ActionRefreshMetadataExecute(Sender: TObject);
 begin
    Controller.RefreshMetadata(RadioGroupFieldNameFormatting.ItemIndex = 1);
@@ -484,6 +435,7 @@ begin
       end;
    end
    else begin
+      {$Message Warn 'Initialize all the data'}
       Controller.CreateEntGenDB;
       dsTables.Open;
       dsFields.Open;
@@ -496,11 +448,15 @@ end;
 
 procedure TMain.ActionSaveProjectAsExecute(Sender: TObject);
 begin
+   {Get the desired project name}
+   DialogSaveProject.FileName := FProjectName;
    if DialogSaveProject.Execute then begin
-      FProjectName := DialogSaveProject.FileName;
-      Controller.SaveProject(FProjectName);
-      FModified := False;
-   end;
+      FProjectName := ExtractFileName(DialogSaveProject.FileName);
+      Caption      := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+      Log.Info('Project '+FProjectName+' ready to be saved.', LOG_TAG);
+      ActionSaveProject.Execute;
+   end
+   else Exit;
 end;
 
 procedure TMain.ActionSaveProjectAsUpdate(Sender: TObject);
@@ -509,79 +465,54 @@ begin
 end;
 
 procedure TMain.ActionSaveProjectExecute(Sender: TObject);
-var //MarkTable       :TBookmark;
-    //MarkField       :TBookmark;
-    tempProjectName :string;
 begin
    {Saves all the pendant changes to memory database}
-   { Save current positions }
-   {$Message Warn 'This is actually necessary? We save each change at the moment.'}
-   (*MarkTable := dsTables.GetBookmark;
-   MarkField := dsFields.GetBookmark;
-   dsTables.DisableControls;
-   dsFields.DisableControls;
-   try
-      Controller.SavePendantData(dsTables, dsFields);
-
-      { Restore previous positons }
-      dsTables.GotoBookmark(MarkTable);
-      dsFields.GotoBookmark(MarkField);
-   finally
-      dsTables.EnableControls;
-      dsFields.EnableControls;
-      dsTables.FreeBookmark(MarkTable);
-      dsFields.FreeBookmark(MarkField);
-   end;*)
-
    if FProjectName = NOT_SAVED_PROJECT_NAME then begin
-      {Get the desired project name}
       DialogSaveProject.DefaultFolder := ExtractFilePath(ParamStr(0));
-      DialogSaveProject.FileName      := DEFAULT_PROJECT_NAME;
-      if DialogSaveProject.Execute then begin
-         TempProjectName := DialogSaveProject.FileName;
-      end
-      else Exit;
-
-      if FileExists(TempProjectName) then begin
-         case MessageDlg(Format('The project "%s" previusly exists. Overwrite it?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
-            mrYes: begin
-               if Controller.SaveProject(TempProjectName) then begin
-                  FModified    := False;
-                  FProjectName := TempProjectName;
-                  ActionRefreshMetadata.Execute;
-                  Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-                  Log.Info('Project '+FProjectName+' rewrited on disk.', LOG_TAG);
-               end
-               else begin
-                  Log.Info('Project '+FProjectName+' failed to be rewrited on disk.', LOG_TAG);
-                  raise Exception.Create('Error saving data');
-               end;
-            end;
-            mrCancel: begin { Abort the saving process }
-               Log.Info('Operation of create a new Project canceled by thee user', LOG_TAG);
-               Caption := Format('DMVCFramework Entities Generator :: (Without project open)', [FProjectName, DMVCFRAMEWORK_VERSION]);
-            end;
-         end;
-      end
-      else begin
-         if Controller.SaveProject(TempProjectName) then begin
-            FModified    := False;
-            FProjectName := TempProjectName;
-            ActionRefreshMetadata.Execute;
-            Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-            Log.Info('Project '+FProjectName+' save to file for the first time.', LOG_TAG);
-         end
-         else begin
-            Log.Info('Project '+FProjectName+' failed to be saved on disk.', LOG_TAG);
-            raise Exception.Create('Error saving data');
-         end;
-      end;
+      FProjectName := DEFAULT_PROJECT_NAME;
+      ActionSaveProjectAs.Execute;
    end
    else begin
-      Controller.SaveProject(FProjectName);
-      FModified := False;
-      ActionRefreshMetadata.Execute;
-      Log.Info(Format('Database %s saved on disk', [FProjectName]), LOG_TAG);
+      if Controller.SaveProject(FProjectName) then begin
+         FModified    := False;
+         ActionRefreshMetadata.Execute;
+         Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+         Log.Info(Format('Database %s saved on disk', [FProjectName]), LOG_TAG);
+      end
+      else begin
+         Log.Info('Project '+FProjectName+' failed to be saved on disk.', LOG_TAG);
+         raise Exception.Create('Error saving data');
+      end;
+   end;
+end;
+
+procedure TMain.ActionOpenProjectExecute(Sender: TObject);
+begin
+   {The project has not modifications}
+   if (FModified) or (FProjectName <> NOT_SAVED_PROJECT_NAME) or (not DBConnection.Params.IsEmpty) then begin
+      case MessageDlg(Format('Current changes in the project will be lost. Continue?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
+         mrCancel: Exit;
+      end;
+   end;
+
+   {The project name was never saved}
+   if ProjectOpenDialog.Execute then begin
+      FProjectName := ExtractFileName(ProjectOpenDialog.FileName);
+      DisableVisualEvents;
+      try
+         if Controller.LoadProject(FProjectName) then begin
+            dsTables.Open;
+            dsFields.Open;
+            SetOnViewDataFromMemory;
+            if not DBConnection.Params.IsEmpty then begin
+               DBConnection.Open;
+            end;
+            FModified := False;
+            Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
+         end;
+      finally
+         EnableVisualEvents;
+      end;
    end;
 end;
 

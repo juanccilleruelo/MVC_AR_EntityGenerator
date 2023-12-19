@@ -14,14 +14,22 @@ type
     EditClassName: TEdit;
     BtnCancel: TBitBtn;
     BtnOK: TBitBtn;
+    Label2: TLabel;
+    EditDeployPath: TEdit;
+    SelectFolder: TFileOpenDialog;
+    BtnSelectDeployPath: TButton;
     procedure FormShow(Sender: TObject);
+    procedure BtnSelectDeployPathClick(Sender: TObject);
   private
     function GetClassName:string;
     procedure SetTableName(Value :string);
     procedure SetClassName(Value :string);
+    function GetDeployPath:string;
+    procedure SetDeployPath(Value :string);
   public
-    property TableName :string                   write SetTableName;
-    property ClassName :string read GetClassName write SetClassName;
+    property TableName  :string                    write SetTableName;
+    property ClassName  :string read GetClassName  write SetClassName;
+    property DeployPath :string read GetDeployPath write SetDeployPath;
   end;
 
 var
@@ -30,6 +38,13 @@ var
 implementation
 
 {$R *.dfm}
+
+procedure TEditTableForm.BtnSelectDeployPathClick(Sender: TObject);
+begin
+   if SelectFolder.Execute then begin
+      DeployPath := SelectFolder.FileName;
+   end;
+end;
 
 procedure TEditTableForm.FormShow(Sender: TObject);
 begin
@@ -49,6 +64,16 @@ end;
 procedure TEditTableForm.SetTableName(Value: string);
 begin
    LabelTableName.Caption := Value;
+end;
+
+function TEditTableForm.GetDeployPath:string;
+begin
+   Result := EditDeployPath.Text;
+end;
+
+procedure TEditTableForm.SetDeployPath(Value :string);
+begin
+   EditDeployPath.Text := Value;
 end;
 
 end.

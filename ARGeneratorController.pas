@@ -22,9 +22,9 @@ uses System.Classes, System.Generics.Collections, System.Rtti, System.DateUtils,
 type
   TARGeneratorController = class
   private
-    FLog         :ILogWriter;
-    FARDB        :TFDConnection; {Link to the Database of the component editor                      }
-    FConnection  :TFDConnection; {Link to the Database of work. From which we extract ActiverRecords}
+    FLog        :ILogWriter;
+    FARDB       :TFDConnection; {Link to the Database of the component editor                      }
+    FConnection :TFDConnection; {Link to the Database of work. From which we extract ActiverRecords}
 
     FNameCase            :TRadioGroup;{ This                        }
     FFieldNameFormatting :TRadioGroup;{       are                   }
