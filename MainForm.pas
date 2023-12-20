@@ -7,6 +7,7 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.DBGrids, Vcl.Buttons, Vcl.ActnList, Vcl.Menus, Vcl.StdActns,
   Vcl.ExtActns, System.ImageList, Vcl.ImgList, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.Grids, Vcl.ValEdit,
+  VCL.Themes,
   FireDAC.Stan.Intf, FireDAC.Stan.Option, FireDAC.Stan.Error, FireDAC.UI.Intf, FireDAC.Phys.Intf, FireDAC.Stan.Def,
   FireDAC.Stan.Pool, FireDAC.Stan.Async, FireDAC.Phys, FireDAC.Stan.Param, FireDAC.DatS, FireDAC.DApt.Intf, FireDAC.DApt,
   FireDAC.VCLUI.Wait, FireDAC.Comp.UI, FireDAC.Phys.IBBase, FireDAC.Phys.FB, FireDAC.Comp.DataSet, FireDAC.Comp.Client,
@@ -65,8 +66,6 @@ type
     dsTablesTABLE_NAME: TStringField;
     dsTablesCLASS_NAME: TStringField;
     dsTablesDEPLOY_PATH: TStringField;
-    dsTablesTARGET_CLASS_NAME: TStringField;
-    dsTablesTARGET_FILE_NAME: TStringField;
     dsTablesWITH_DETAIL: TStringField;
     dsTablesDETAIL_CLASS_NAME: TStringField;
     dsTablesDETAIL_PROP_NAME: TStringField;
@@ -86,8 +85,6 @@ type
     btnGenEntities: TButton;
     RadioGroupNameCase: TRadioGroup;
     RadioGroupFieldNameFormatting: TRadioGroup;
-    gbOptions: TGroupBox;
-    CheckBoxClassAsAbstract: TCheckBox;
     Panel10: TPanel;
     btnGetTables: TButton;
     BtnConnectDatabase: TButton;
@@ -102,7 +99,28 @@ type
     PanelSource: TPanel;
     FDSQLiteBackup1: TFDSQLiteBackup;
     ActionConnectDatabase: TAction;
-    CheckBoxWithMappingRegistry: TCheckBox;
+    dsTablesDECLARE_AS_ABSTRACT: TStringField;
+    dsTablesREGISTER_ENTITY: TStringField;
+    PopupMenuGridTables: TPopupMenu;
+    MenuItemEditTable: TMenuItem;
+    ActionEditTable: TAction;
+    PopupMenuEditField: TPopupMenu;
+    MenuItemEditRow: TMenuItem;
+    ActionEditField: TAction;
+    PopupMenuDeclareAsAbstract: TPopupMenu;
+    MenuItemMarkAllDeclareAsAbstract: TMenuItem;
+    MenuItemUnmarkAllDelcareAsAbstract: TMenuItem;
+    MenuItemInvertDeclareAsAbstract: TMenuItem;
+    PopupMenuRegisterEntity: TPopupMenu;
+    MenuItemMarkAllRegisterEntity: TMenuItem;
+    MenuItemUnmarkAllRegisterEntity: TMenuItem;
+    MenuItemInvertMarksRegisterEntity: TMenuItem;
+    ActionMarkAllDeclareAsAbstract: TAction;
+    ActionUnmarkAllDeclareAsAbstract: TAction;
+    ActionInvertMarksDeclareAsAbstract: TAction;
+    ActionMarkAllRegisterEntity: TAction;
+    ActionUnmarkAllRegisterEntity: TAction;
+    ActionInvertMarksRegisterEntity: TAction;
     procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure ActionOpenProjectExecute(Sender: TObject);
@@ -124,9 +142,18 @@ type
     procedure ActionRefreshMetadataUpdate(Sender: TObject);
     procedure RadioGroupNameCaseClick(Sender: TObject);
     procedure RadioGroupFieldNameFormattingClick(Sender: TObject);
-    procedure CheckBoxClassAsAbstractClick(Sender: TObject);
-    procedure CheckBoxWithMappingRegistryClick(Sender: TObject);
+
     procedure ActionSaveProjectAsUpdate(Sender: TObject);
+    procedure MenuItemEditTableClick(Sender: TObject);
+    procedure ActionEditTableExecute(Sender: TObject);
+    procedure ActionEditFieldExecute(Sender: TObject);
+    procedure GridTablesTitleClick(Column: TColumn);
+    procedure ActionMarkAllDeclareAsAbstractExecute(Sender: TObject);
+    procedure ActionUnmarkAllDeclareAsAbstractExecute(Sender: TObject);
+    procedure ActionInvertMarksDeclareAsAbstractExecute(Sender: TObject);
+    procedure ActionMarkAllRegisterEntityExecute(Sender: TObject);
+    procedure ActionUnmarkAllRegisterEntityExecute(Sender: TObject);
+    procedure ActionInvertMarksRegisterEntityExecute(Sender: TObject);
   private
     FProjectName :string;
     FModified    :Boolean; {Changes not saved on disk}
@@ -194,8 +221,6 @@ begin
    Controller.Connection          := DBConnection;
    Controller.NameCase            := RadioGroupNameCase;
    Controller.FieldNameFormatting := RadioGroupFieldNameFormatting;
-   Controller.ClassAsAbstract     := CheckBoxClassAsAbstract;
-   Controller.WithMappingRegistry := CheckBoxWithMappingRegistry;
 end;
 
 procedure TMain.FormClose(Sender: TObject; var Action: TCloseAction);
@@ -207,36 +232,83 @@ procedure TMain.DisableVisualEvents;
 begin
    RadioGroupNameCase.OnClick            := nil;
    RadioGroupFieldNameFormatting.OnClick := nil;
-   CheckBoxClassAsAbstract.OnClick       := nil;
-   CheckBoxWithMappingRegistry.OnClick   := nil;
 end;
 
 procedure TMain.EnableVisualEvents;
 begin
    RadioGroupNameCase.OnClick            := RadioGroupNameCaseClick;
    RadioGroupFieldNameFormatting.OnClick := RadioGroupFieldNameFormattingClick;
-   CheckBoxClassAsAbstract.OnClick       := CheckBoxClassAsAbstractClick;
-   CheckBoxWithMappingRegistry.OnClick   := CheckBoxWithMappingRegistryClick;
 end;
 
 procedure TMain.GridTablesDblClick(Sender: TObject);
+begin
+   ActionEditTable.Execute;
+end;
+
+procedure TMain.GridTablesDrawColumnCell(Sender: TObject; const Rect: TRect; DataCol: Integer; Column: TColumn; State: TGridDrawState);
+const
+  CtrlState   :array[Boolean] of Integer = (DFCS_BUTTONCHECK, DFCS_BUTTONCHECK or DFCS_CHECKED);
+var CheckBoxRectangle :TRect;
+    Details           :TThemedElementDetails;
+begin
+   GridTables.DrawingStyle := gdsClassic;
+   GridTables.Columns[0].Title.Color := clBtnShadow;
+   GridTables.Columns[1].Title.Color := clBtnShadow;
+
+   GridTables.Columns[0].Color := clBtnShadow;
+
+   if (Column.FieldName = 'REGISTER_ENTITY') or (Column.FieldName = 'DECLARE_AS_ABSTRACT') then begin
+      Column.Title.Alignment := taCenter;
+      Column.Alignment       := taCenter;
+      TDBGrid(Sender).Canvas.FillRect(Rect);
+
+      CheckBoxRectangle.Left   := Rect.Left   + 2;
+      CheckBoxRectangle.Right  := Rect.Right  - 2;
+      CheckBoxRectangle.Top    := Rect.Top    + 2;
+      CheckBoxRectangle.Bottom := Rect.Bottom - 2;
+      if Column.Field.AsString = 'Y' then begin
+         DrawFrameControl(TDBGrid(Sender).Canvas.Handle, CheckBoxRectangle, DFC_BUTTON, CtrlState[True]);
+      end
+      else begin
+         DrawFrameControl(TDBGrid(Sender).Canvas.Handle, CheckBoxRectangle, DFC_BUTTON, CtrlState[False]);
+      end;
+   end;
+
+end;
+
+procedure TMain.GridTablesTitleClick(Column: TColumn);
+var Point :TPoint;
+begin
+   if Column.FieldName = 'DECLARE_AS_ABSTRACT' then begin
+      if GetCursorPos(Point) then PopupMenuDeclareAsAbstract.Popup(Point.X, Point.Y);
+   end else
+   if Column.FieldName = 'REGISTER_ENTITY' then begin
+      if GetCursorPos(Point) then PopupMenuRegisterEntity.Popup(Point.X, Point.Y);
+   end;
+end;
+
+procedure TMain.MenuItemEditTableClick(Sender: TObject);
 var EditTable :TEditTableForm;
 begin
    if FProjectName.IsEmpty then Exit;
 
    EditTable := TEditTableForm.Create(nil);
    try
-      // Configure the properties of the form before show it.
-      EditTable.TableName  := dsTablesTABLE_NAME.AsString;
-      EditTable.ClassName  := dsTablesCLASS_NAME.AsString;
-      EditTable.DeployPath := dsTablesDEPLOY_PATH.AsString;
+      { Configure the properties of the form before show it. }
+      EditTable.TableName         := dsTablesTABLE_NAME.AsString;
+      EditTable.ClassName         := dsTablesCLASS_NAME.AsString;
+      EditTable.DeployPath        := dsTablesDEPLOY_PATH.AsString;
+      EditTable.DeclareAsAbstract := dsTablesDECLARE_AS_ABSTRACT.AsString;
+      EditTable.RegisterEntity    := dsTablesREGISTER_ENTITY.AsString;
 
-      // Show the form in Modal state
+      { Show the form in Modal state }
       if EditTable.ShowModal = mrOK then begin
-         // Recover the data modified after close the form.
+         { Recover the data modified after close the form. }
          dsTables.Edit;
-         dsTablesCLASS_NAME.AsString  := EditTable.ClassName;
-         dsTablesDEPLOY_PATH.AsString := EditTable.DeployPath;
+         dsTablesCLASS_NAME.AsString          := EditTable.ClassName;
+         dsTablesDEPLOY_PATH.AsString         := EditTable.DeployPath;
+         dsTablesDECLARE_AS_ABSTRACT.AsString := EditTable.DeclareAsAbstract;
+         dsTablesREGISTER_ENTITY.AsString     := EditTable.RegisterEntity;
          dsTables.Post;
          Controller.SaveCurrentViewTableToMemory(dsTables);
          FModified := True;
@@ -244,15 +316,6 @@ begin
    finally
       EditTable.Free;
    end;
-end;
-
-procedure TMain.GridTablesDrawColumnCell(Sender: TObject; const Rect: TRect; DataCol: Integer; Column: TColumn; State: TGridDrawState);
-begin
-   GridTables.DrawingStyle := gdsClassic;
-   GridTables.Columns[0].Title.Color := clBtnShadow;
-   GridTables.Columns[1].Title.Color := clBtnShadow;
-
-   GridTables.Columns[0].Color := clBtnShadow;
 end;
 
 procedure TMain.ActionConnectDatabaseExecute(Sender: TObject);
@@ -275,6 +338,63 @@ begin
    ActionConnectDatabase.Enabled := ARDB.Connected;
 end;
 
+procedure TMain.ActionEditFieldExecute(Sender: TObject);
+var EditField :TEditFieldForm;
+begin
+   if FProjectName.IsEmpty then Exit;
+
+   EditField := TEditFieldForm.Create(nil);
+   try
+      { Configure the properties of the form before show it. }
+      EditField.TableName  := dsFieldsTABLE_NAME.AsString;
+      EditField.FieldName  := dsFieldsFIELD_NAME.AsString;
+      EditField.CustomName := dsFieldsCUSTOM_NAME.AsString;
+
+      { Show the form in Modal state }
+      if EditField.ShowModal = mrOK then begin
+         { Recover the data modified after close the form. }
+         dsFields.Edit;
+         dsFieldsCUSTOM_NAME.AsString := EditField.CustomName;
+         dsFields.Post;
+         Controller.SaveCurrentViewFieldToMemory(dsFields);
+         FModified := True;
+      end;
+   finally
+      EditField.Free;
+   end;
+end;
+
+procedure TMain.ActionEditTableExecute(Sender: TObject);
+var EditTable :TEditTableForm;
+begin
+   if FProjectName.IsEmpty then Exit;
+
+   EditTable := TEditTableForm.Create(nil);
+   try
+      { Configure the properties of the form before show it. }
+      EditTable.TableName         := dsTablesTABLE_NAME.AsString;
+      EditTable.ClassName         := dsTablesCLASS_NAME.AsString;
+      EditTable.DeployPath        := dsTablesDEPLOY_PATH.AsString;
+      EditTable.DeclareAsAbstract := dsTablesDECLARE_AS_ABSTRACT.AsString;
+      EditTable.RegisterEntity    := dsTablesREGISTER_ENTITY.AsString;
+
+      { Show the form in Modal state }
+      if EditTable.ShowModal = mrOK then begin
+         { Recover the data modified after close the form. }
+         dsTables.Edit;
+         dsTablesCLASS_NAME.AsString          := EditTable.ClassName;
+         dsTablesDEPLOY_PATH.AsString         := EditTable.DeployPath;
+         dsTablesDECLARE_AS_ABSTRACT.AsString := EditTable.DeclareAsAbstract;
+         dsTablesREGISTER_ENTITY.AsString     := EditTable.RegisterEntity;
+         dsTables.Post;
+         Controller.SaveCurrentViewTableToMemory(dsTables);
+         FModified := True;
+      end;
+   finally
+      EditTable.Free;
+   end;
+end;
+
 procedure TMain.ActionGenerateAllExecute(Sender: TObject);
 var FileName    :string;
     OverwriteIt :Boolean;
@@ -284,7 +404,7 @@ var FileName    :string;
 begin
    EntityCount := 0;
    Log.Info('Starting entities generation and saving', LOG_TAG);
-   // Save current positions
+   { Save current positions }
    MarkTable := dsTables.GetBookmark;
    MarkField := dsFields.GetBookmark;
    dsTables.DisableControls;
@@ -298,15 +418,15 @@ begin
                                  dsTablesTABLE_NAME.AsString,
                                  dsTablesCLASS_NAME.AsString,
                                  dsFields,
-                                 CheckBoxClassAsAbstract.Checked,
+                                 dsTablesDECLARE_AS_ABSTRACT.AsString = 'Y',
                                  RadioGroupNameCase.Items[RadioGroupNameCase.ItemIndex],
-                                 CheckBoxWithMappingRegistry.Checked,
+                                 dsTablesREGISTER_ENTITY.AsString = 'Y',
                                  RadioGroupFieldNameFormatting.ItemIndex = 1);
          Log.Info('Code for table '+dsTablesTABLE_NAME.AsString +' has been generated', LOG_TAG);
 
-         // Generates the FileName where to save the code
+         { Generates the FileName where to save the code }
          FileName := dsTablesDEPLOY_PATH.AsString + PathDelim + Controller.GetUnitName(dsTABLESCLASS_NAME.AsString) + '.pas';
-         // Verify if the file exists previously
+         { Verify if the file exists previously }
          if FileExists(FileName) then begin
             if not OverwriteIt then begin
                case MessageDlg(Format('The file "%s" preiously exists. Overwrite it?', [FileName]), mtConfirmation, [mbYes, mbYesToAll, mbNo, mbCancel], 0) of
@@ -321,33 +441,33 @@ begin
                      OverwriteIt := True;
                      Log.Info('All the next file are going to be overwrite if them exists previously.', LOG_TAG);
                   end;
-                  mrNo: begin // Do not overwrite. Continue with the next iteration
+                  mrNo: begin { Do not overwrite. Continue with the next iteration }
                      Log.Info('File '+FileName+' has not been generated.', LOG_TAG);
                      dsTables.Next;
                      Continue;
                   end;
-                  mrCancel: begin// Abortar el proceso de guardado
+                  mrCancel: begin { Abort the saving process }
                      Log.Info('Operation of save file canceled by the user', LOG_TAG);
                      Break;
                   end;
                end;
             end
             else begin
-               // Save the file because the user decided to overwrite all
+               { Save the file because the user decided to overwrite all }
                MemoOutputCode.Lines.SaveToFile(FileName);
                Inc(EntityCount);
                Log.Info('File '+FileName+' has been saved', LOG_TAG);
             end;
          end
          else begin
-            // Save the file without issues
+            { Save the file without issues }
             MemoOutputCode.Lines.SaveToFile(FileName);
             Inc(EntityCount);
             Log.Info('File '+FileName+' has been saved', LOG_TAG);
          end;
          dsTables.Next;
       end;
-      // Restore previous positons
+      { Restore previous positons }
       dsTables.GotoBookmark(MarkTable);
       dsFields.GotoBookmark(MarkField);
    finally
@@ -371,9 +491,9 @@ begin
                            dsTablesTABLE_NAME.AsString,
                            dsTablesCLASS_NAME.AsString,
                            dsFields,
-                           CheckBoxClassAsAbstract.Checked,
+                           dsTablesDECLARE_AS_ABSTRACT.AsString = 'Y',
                            RadioGroupNameCase.Items[RadioGroupNameCase.ItemIndex],
-                           CheckBoxWithMappingRegistry.Checked,
+                           dsTablesREGISTER_ENTITY.AsString = 'Y',
                            RadioGroupFieldNameFormatting.ItemIndex = 1);
    Log.Info('Code for table '+dsTablesTABLE_NAME.AsString +' has been generated', LOG_TAG);
 
@@ -396,6 +516,132 @@ end;
 procedure TMain.ActionGenerateCurrentUpdate(Sender: TObject);
 begin
    ActionGenerateCurrent.Enabled := not FProjectName.IsEmpty;
+end;
+
+procedure TMain.ActionInvertMarksDeclareAsAbstractExecute(Sender: TObject);
+var MarkTable   :TBookmark;
+    MarkField   :TBookmark;
+begin
+   { Save current positions }
+   MarkTable := dsTables.GetBookmark;
+   MarkField := dsFields.GetBookmark;
+   dsTables.DisableControls;
+   dsFields.DisableControls;
+   try
+      dsTables.First;
+      while not dsTables.EOF do begin
+         dsTables.Edit;
+         if dsTablesDECLARE_AS_ABSTRACT.AsString = 'N' then
+            dsTablesDECLARE_AS_ABSTRACT.AsString := 'Y'
+         else
+            dsTablesDECLARE_AS_ABSTRACT.AsString := 'N';
+         dsTables.Post;
+         dsTables.Next;
+      end;
+
+      { Restore previous positons }
+      dsTables.GotoBookmark(MarkTable);
+      dsFields.GotoBookmark(MarkField);
+   finally
+      dsTables.EnableControls;
+      dsFields.EnableControls;
+      dsTables.FreeBookmark(MarkTable);
+      dsFields.FreeBookmark(MarkField);
+      Log.Info('Marked all the Tables as Declare As Abstract', [],  LOG_TAG);
+   end;
+end;
+
+procedure TMain.ActionInvertMarksRegisterEntityExecute(Sender: TObject);
+var MarkTable   :TBookmark;
+    MarkField   :TBookmark;
+begin
+   { Save current positions }
+   MarkTable := dsTables.GetBookmark;
+   MarkField := dsFields.GetBookmark;
+   dsTables.DisableControls;
+   dsFields.DisableControls;
+   try
+      dsTables.First;
+      while not dsTables.EOF do begin
+         dsTables.Edit;
+         if dsTablesREGISTER_ENTITY.AsString = 'N' then
+            dsTablesREGISTER_ENTITY.AsString := 'Y'
+         else
+            dsTablesREGISTER_ENTITY.AsString := 'N';
+         dsTables.Post;
+         dsTables.Next;
+      end;
+
+      { Restore previous positons }
+      dsTables.GotoBookmark(MarkTable);
+      dsFields.GotoBookmark(MarkField);
+   finally
+      dsTables.EnableControls;
+      dsFields.EnableControls;
+      dsTables.FreeBookmark(MarkTable);
+      dsFields.FreeBookmark(MarkField);
+      Log.Info('Marked all the Tables as Declare As Abstract', [],  LOG_TAG);
+   end;
+end;
+
+procedure TMain.ActionMarkAllDeclareAsAbstractExecute(Sender: TObject);
+var MarkTable   :TBookmark;
+    MarkField   :TBookmark;
+begin
+   { Save current positions }
+   MarkTable := dsTables.GetBookmark;
+   MarkField := dsFields.GetBookmark;
+   dsTables.DisableControls;
+   dsFields.DisableControls;
+   try
+      dsTables.First;
+      while not dsTables.EOF do begin
+         dsTables.Edit;
+         dsTablesDECLARE_AS_ABSTRACT.AsString := 'Y';
+         dsTables.Post;
+         dsTables.Next;
+      end;
+
+      { Restore previous positons }
+      dsTables.GotoBookmark(MarkTable);
+      dsFields.GotoBookmark(MarkField);
+   finally
+      dsTables.EnableControls;
+      dsFields.EnableControls;
+      dsTables.FreeBookmark(MarkTable);
+      dsFields.FreeBookmark(MarkField);
+      Log.Info('Marked all the Tables as Declare As Abstract', [],  LOG_TAG);
+   end;
+end;
+
+procedure TMain.ActionMarkAllRegisterEntityExecute(Sender: TObject);
+var MarkTable   :TBookmark;
+    MarkField   :TBookmark;
+begin
+   { Save current positions }
+   MarkTable := dsTables.GetBookmark;
+   MarkField := dsFields.GetBookmark;
+   dsTables.DisableControls;
+   dsFields.DisableControls;
+   try
+      dsTables.First;
+      while not dsTables.EOF do begin
+         dsTables.Edit;
+         dsTablesREGISTER_ENTITY.AsString := 'Y';
+         dsTables.Post;
+         dsTables.Next;
+      end;
+
+      { Restore previous positons }
+      dsTables.GotoBookmark(MarkTable);
+      dsFields.GotoBookmark(MarkField);
+   finally
+      dsTables.EnableControls;
+      dsFields.EnableControls;
+      dsTables.FreeBookmark(MarkTable);
+      dsFields.FreeBookmark(MarkField);
+      Log.Info('Marked all the Tables as Declare As Abstract', [],  LOG_TAG);
+   end;
 end;
 
 procedure TMain.ActionRefreshMetadataExecute(Sender: TObject);
@@ -521,41 +767,71 @@ begin
    ActionSaveProject.Enabled := FModified;
 end;
 
-procedure TMain.CheckBoxClassAsAbstractClick(Sender: TObject);
+procedure TMain.ActionUnmarkAllDeclareAsAbstractExecute(Sender: TObject);
+var MarkTable   :TBookmark;
+    MarkField   :TBookmark;
 begin
-   FModified := True;
+   { Save current positions }
+   MarkTable := dsTables.GetBookmark;
+   MarkField := dsFields.GetBookmark;
+   dsTables.DisableControls;
+   dsFields.DisableControls;
+   try
+      dsTables.First;
+      while not dsTables.EOF do begin
+         dsTables.Edit;
+         dsTablesDECLARE_AS_ABSTRACT.AsString := 'N';
+         dsTables.Post;
+         dsTables.Next;
+      end;
+
+      { Restore previous positons }
+      dsTables.GotoBookmark(MarkTable);
+      dsFields.GotoBookmark(MarkField);
+   finally
+      dsTables.EnableControls;
+      dsFields.EnableControls;
+      dsTables.FreeBookmark(MarkTable);
+      dsFields.FreeBookmark(MarkField);
+      Log.Info('Marked all the Tables as Declare As Abstract', [],  LOG_TAG);
+   end;
 end;
 
-procedure TMain.CheckBoxWithMappingRegistryClick(Sender: TObject);
+procedure TMain.ActionUnmarkAllRegisterEntityExecute(Sender: TObject);
+var MarkTable   :TBookmark;
+    MarkField   :TBookmark;
 begin
-   FModified := True;
+   { Save current positions }
+   MarkTable := dsTables.GetBookmark;
+   MarkField := dsFields.GetBookmark;
+   dsTables.DisableControls;
+   dsFields.DisableControls;
+   try
+      dsTables.First;
+      while not dsTables.EOF do begin
+         dsTables.Edit;
+         dsTablesREGISTER_ENTITY.AsString := 'N';
+         dsTables.Post;
+         dsTables.Next;
+      end;
+
+      { Restore previous positons }
+      dsTables.GotoBookmark(MarkTable);
+      dsFields.GotoBookmark(MarkField);
+   finally
+      dsTables.EnableControls;
+      dsFields.EnableControls;
+      dsTables.FreeBookmark(MarkTable);
+      dsFields.FreeBookmark(MarkField);
+      Log.Info('Marked all the Tables as Declare As Abstract', [],  LOG_TAG);
+   end;
 end;
 
 procedure TMain.GridFieldsDblClick(Sender: TObject);
-var EditField :TEditFieldForm;
 begin
-   if FProjectName.IsEmpty then Exit;
-
-   EditField := TEditFieldForm.Create(nil);
-   try
-      { Configure the properties of the form before show it. }
-      EditField.TableName  := dsFieldsTABLE_NAME.AsString;
-      EditField.FieldName  := dsFieldsFIELD_NAME.AsString;
-      EditField.CustomName := dsFieldsCUSTOM_NAME.AsString;
-
-      { Show the form in Modal state }
-      if EditField.ShowModal = mrOK then begin
-         { Recover the data modified after close the form. }
-         dsFields.Edit;
-         dsFieldsCUSTOM_NAME.AsString := EditField.CustomName;
-         dsFields.Post;
-         Controller.SaveCurrentViewFieldToMemory(dsFields);
-         FModified := True;
-      end;
-   finally
-      EditField.Free;
-   end;
+   ActionEditField.Execute;
 end;
+
 
 procedure TMain.GridFieldsDrawColumnCell(Sender: TObject; const Rect: TRect; DataCol: Integer; Column: TColumn; State: TGridDrawState);
 begin
@@ -579,8 +855,6 @@ procedure TMain.ResetUI;
 begin
    RadioGroupNameCase.ItemIndex            := 0;
    RadioGroupFieldNameFormatting.ItemIndex := 0;
-   CheckBoxClassAsAbstract.Checked         := False;
-   CheckBoxWithMappingRegistry.Checked     := False;
 
    dsFields.EmptyDataSet;
    dsTables.EmptyDataSet;

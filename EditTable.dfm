@@ -3,7 +3,7 @@ object EditTableForm: TEditTableForm
   Top = 0
   BorderStyle = bsDialog
   Caption = 'Edit Table'
-  ClientHeight = 157
+  ClientHeight = 205
   ClientWidth = 549
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -51,7 +51,7 @@ object EditTableForm: TEditTableForm
   end
   object BtnCancel: TBitBtn
     Left = 385
-    Top = 124
+    Top = 172
     Width = 75
     Height = 25
     Cancel = True
@@ -61,7 +61,7 @@ object EditTableForm: TEditTableForm
   end
   object BtnOK: TBitBtn
     Left = 466
-    Top = 124
+    Top = 172
     Width = 75
     Height = 25
     Caption = 'OK'
@@ -85,6 +85,31 @@ object EditTableForm: TEditTableForm
     TabOrder = 4
     OnClick = BtnSelectDeployPathClick
   end
+  object CheckBoxDeclareAsAbstract: TCheckBox
+    Left = 48
+    Top = 88
+    Width = 464
+    Height = 17
+    Caption = 
+      'Declare the class as abstract (MVCTable must be redeclared on de' +
+      'scendant classes)'
+    TabOrder = 5
+  end
+  object CheckBoxRegisterEntity: TCheckBox
+    AlignWithMargins = True
+    Left = 47
+    Top = 111
+    Width = 458
+    Height = 32
+    Margins.Left = 10
+    Caption = 
+      'Register the entity in ActiveRecordMappingRegistry (needed by TM' +
+      'VCActiveRecordController)'
+    Checked = True
+    State = cbChecked
+    TabOrder = 6
+    WordWrap = True
+  end
   object SelectFolder: TFileOpenDialog
     FavoriteLinks = <>
     FileTypes = <
@@ -93,7 +118,7 @@ object EditTableForm: TEditTableForm
         FileMask = '*.entgen'
       end>
     Options = [fdoPickFolders, fdoPathMustExist]
-    Left = 30
-    Top = 97
+    Left = 22
+    Top = 153
   end
 end

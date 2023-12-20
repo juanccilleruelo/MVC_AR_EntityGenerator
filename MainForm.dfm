@@ -56,8 +56,6 @@ object Main: TMain
       Caption = 'Panel5'
       ShowCaption = False
       TabOrder = 1
-      ExplicitLeft = 4
-      ExplicitTop = 6
       object BtnGenerateCurrent: TButton
         AlignWithMargins = True
         Left = 9
@@ -137,7 +135,6 @@ object Main: TMain
         Anchors = [akRight, akBottom]
         Caption = 'Generate Entities'
         TabOrder = 0
-        ExplicitTop = 0
       end
       object RadioGroupNameCase: TRadioGroup
         Left = 0
@@ -157,9 +154,6 @@ object Main: TMain
           'AsIs')
         TabOrder = 1
         OnClick = RadioGroupNameCaseClick
-        ExplicitLeft = 7
-        ExplicitTop = 6
-        ExplicitHeight = 104
       end
       object RadioGroupFieldNameFormatting: TRadioGroup
         Left = 354
@@ -174,48 +168,6 @@ object Main: TMain
           'Convert names to Pascal Case (eg FirstName)')
         TabOrder = 2
         OnClick = RadioGroupFieldNameFormattingClick
-        ExplicitLeft = 367
-        ExplicitTop = 6
-        ExplicitHeight = 104
-      end
-      object gbOptions: TGroupBox
-        Left = 709
-        Top = 0
-        Width = 501
-        Height = 82
-        Align = alClient
-        Caption = 'Other Options'
-        TabOrder = 3
-        ExplicitLeft = 715
-        ExplicitTop = -6
-        ExplicitHeight = 90
-        object CheckBoxClassAsAbstract: TCheckBox
-          Left = 14
-          Top = 21
-          Width = 464
-          Height = 17
-          Caption = 
-            'Declare classes as abstract (MVCTable must be redeclared on desc' +
-            'endant classes)'
-          TabOrder = 0
-          OnClick = CheckBoxClassAsAbstractClick
-        end
-        object CheckBoxWithMappingRegistry: TCheckBox
-          AlignWithMargins = True
-          Left = 13
-          Top = 44
-          Width = 413
-          Height = 32
-          Margins.Left = 10
-          Caption = 
-            'Register entities in ActiveRecordMappingRegistry (needed by TMVC' +
-            'ActiveRecordController)'
-          Checked = True
-          State = cbChecked
-          TabOrder = 1
-          WordWrap = True
-          OnClick = CheckBoxWithMappingRegistryClick
-        end
       end
     end
     object Panel10: TPanel
@@ -227,7 +179,6 @@ object Main: TMain
       Caption = 'Panel10'
       ShowCaption = False
       TabOrder = 1
-      ExplicitTop = 143
       object btnGetTables: TButton
         AlignWithMargins = True
         Left = 172
@@ -266,12 +217,10 @@ object Main: TMain
       ActivePage = TabSheetTables
       Align = alClient
       TabOrder = 2
-      ExplicitTop = 206
-      ExplicitHeight = 471
       object TabSheetTables: TTabSheet
         Caption = 'Tables'
         object Splitter2: TSplitter
-          Left = 513
+          Left = 849
           Top = 0
           Height = 469
           ExplicitLeft = 384
@@ -286,17 +235,17 @@ object Main: TMain
           Align = alBottom
           BevelOuter = bvNone
           TabOrder = 0
-          ExplicitTop = 400
         end
         object GridTables: TDBGrid
           Left = 0
           Top = 0
-          Width = 513
+          Width = 849
           Height = 469
           Align = alLeft
           DataSource = srcTables
           FixedColor = clBtnShadow
-          Options = [dgTitles, dgColumnResize, dgColLines, dgTabs, dgRowSelect, dgAlwaysShowSelection, dgConfirmDelete, dgCancelOnExit]
+          Options = [dgTitles, dgColumnResize, dgColLines, dgTabs, dgRowSelect, dgAlwaysShowSelection, dgConfirmDelete, dgCancelOnExit, dgTitleClick]
+          PopupMenu = PopupMenuGridTables
           TabOrder = 1
           TitleFont.Charset = DEFAULT_CHARSET
           TitleFont.Color = clWindowText
@@ -305,6 +254,7 @@ object Main: TMain
           TitleFont.Style = []
           OnDrawColumnCell = GridTablesDrawColumnCell
           OnDblClick = GridTablesDblClick
+          OnTitleClick = GridTablesTitleClick
           Columns = <
             item
               Expanded = False
@@ -330,8 +280,14 @@ object Main: TMain
             end
             item
               Expanded = False
-              FieldName = 'TARGET_FILE_NAME'
-              Width = 184
+              FieldName = 'DECLARE_AS_ABSTRACT'
+              Title.Caption = 'As Abst.'
+              Visible = True
+            end
+            item
+              Expanded = False
+              FieldName = 'REGISTER_ENTITY'
+              Title.Caption = 'Regs.'
               Visible = True
             end
             item
@@ -360,13 +316,14 @@ object Main: TMain
             end>
         end
         object GridFields: TDBGrid
-          Left = 516
+          Left = 852
           Top = 0
-          Width = 680
+          Width = 344
           Height = 469
           Align = alClient
           DataSource = srcFields
           Options = [dgTitles, dgColumnResize, dgColLines, dgTabs, dgRowSelect, dgAlwaysShowSelection, dgConfirmDelete, dgCancelOnExit]
+          PopupMenu = PopupMenuEditField
           TabOrder = 2
           TitleFont.Charset = DEFAULT_CHARSET
           TitleFont.Color = clWindowText
@@ -408,7 +365,6 @@ object Main: TMain
           ReadOnly = True
           ScrollBars = ssBoth
           TabOrder = 0
-          ExplicitHeight = 400
         end
         object PanelSource: TPanel
           Left = 0
@@ -570,6 +526,38 @@ object Main: TMain
       Caption = 'Connect Database'
       OnExecute = ActionConnectDatabaseExecute
       OnUpdate = ActionConnectDatabaseUpdate
+    end
+    object ActionEditTable: TAction
+      Caption = 'Edit Table'
+      OnExecute = ActionEditTableExecute
+    end
+    object ActionEditField: TAction
+      Caption = 'Edit Field'
+      OnExecute = ActionEditFieldExecute
+    end
+    object ActionMarkAllDeclareAsAbstract: TAction
+      Caption = 'Mark All'
+      OnExecute = ActionMarkAllDeclareAsAbstractExecute
+    end
+    object ActionUnmarkAllDeclareAsAbstract: TAction
+      Caption = 'Unmark All'
+      OnExecute = ActionUnmarkAllDeclareAsAbstractExecute
+    end
+    object ActionInvertMarksDeclareAsAbstract: TAction
+      Caption = 'Invert Marks'
+      OnExecute = ActionInvertMarksDeclareAsAbstractExecute
+    end
+    object ActionMarkAllRegisterEntity: TAction
+      Caption = 'Mark All'
+      OnExecute = ActionMarkAllRegisterEntityExecute
+    end
+    object ActionUnmarkAllRegisterEntity: TAction
+      Caption = 'Unmark All'
+      OnExecute = ActionUnmarkAllRegisterEntityExecute
+    end
+    object ActionInvertMarksRegisterEntity: TAction
+      Caption = 'Invert Marks'
+      OnExecute = ActionInvertMarksRegisterEntityExecute
     end
   end
   object DialogSaveProject: TFileSaveDialog
@@ -896,15 +884,13 @@ object Main: TMain
       Origin = 'DEPLOY_PATH'
       Size = 200
     end
-    object dsTablesTARGET_CLASS_NAME: TStringField
-      FieldName = 'TARGET_CLASS_NAME'
-      Origin = 'TARGET_CLASS_NAME'
-      Size = 200
+    object dsTablesDECLARE_AS_ABSTRACT: TStringField
+      FieldName = 'DECLARE_AS_ABSTRACT'
+      Size = 1
     end
-    object dsTablesTARGET_FILE_NAME: TStringField
-      FieldName = 'TARGET_FILE_NAME'
-      Origin = 'TARGET_FILE_NAME'
-      Size = 200
+    object dsTablesREGISTER_ENTITY: TStringField
+      FieldName = 'REGISTER_ENTITY'
+      Size = 1
     end
     object dsTablesWITH_DETAIL: TStringField
       FieldName = 'WITH_DETAIL'
@@ -966,5 +952,46 @@ object Main: TMain
     DestCatalog = 'MAIN'
     Left = 288
     Top = 486
+  end
+  object PopupMenuGridTables: TPopupMenu
+    Left = 384
+    Top = 323
+    object MenuItemEditTable: TMenuItem
+      Action = ActionEditTable
+      OnClick = MenuItemEditTableClick
+    end
+  end
+  object PopupMenuEditField: TPopupMenu
+    Left = 944
+    Top = 323
+    object MenuItemEditRow: TMenuItem
+      Action = ActionEditField
+    end
+  end
+  object PopupMenuDeclareAsAbstract: TPopupMenu
+    Left = 784
+    Top = 235
+    object MenuItemMarkAllDeclareAsAbstract: TMenuItem
+      Action = ActionMarkAllDeclareAsAbstract
+    end
+    object MenuItemUnmarkAllDelcareAsAbstract: TMenuItem
+      Action = ActionUnmarkAllDeclareAsAbstract
+    end
+    object MenuItemInvertDeclareAsAbstract: TMenuItem
+      Action = ActionInvertMarksDeclareAsAbstract
+    end
+  end
+  object PopupMenuRegisterEntity: TPopupMenu
+    Left = 784
+    Top = 291
+    object MenuItemMarkAllRegisterEntity: TMenuItem
+      Action = ActionMarkAllRegisterEntity
+    end
+    object MenuItemUnmarkAllRegisterEntity: TMenuItem
+      Action = ActionUnmarkAllRegisterEntity
+    end
+    object MenuItemInvertMarksRegisterEntity: TMenuItem
+      Action = ActionInvertMarksRegisterEntity
+    end
   end
 end

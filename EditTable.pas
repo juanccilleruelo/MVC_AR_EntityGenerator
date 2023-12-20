@@ -18,6 +18,8 @@ type
     EditDeployPath: TEdit;
     SelectFolder: TFileOpenDialog;
     BtnSelectDeployPath: TButton;
+    CheckBoxDeclareAsAbstract: TCheckBox;
+    CheckBoxRegisterEntity: TCheckBox;
     procedure FormShow(Sender: TObject);
     procedure BtnSelectDeployPathClick(Sender: TObject);
   private
@@ -26,10 +28,18 @@ type
     procedure SetClassName(Value :string);
     function GetDeployPath:string;
     procedure SetDeployPath(Value :string);
+
+    function GetDeclareAsAbstract:string;
+    procedure SetDeclareAsAbstract(Value :string);
+    function GetRegisterEntity:string;
+    procedure SetRegisterEntity(Value :string);
+
   public
-    property TableName  :string                    write SetTableName;
-    property ClassName  :string read GetClassName  write SetClassName;
-    property DeployPath :string read GetDeployPath write SetDeployPath;
+    property TableName         :string                           write SetTableName;
+    property ClassName         :string read GetClassName         write SetClassName;
+    property DeployPath        :string read GetDeployPath        write SetDeployPath;
+    property DeclareAsAbstract :string read GetDeclareAsAbstract write SetDeclareAsAbstract;
+    property RegisterEntity    :string read GetRegisterEntity    write SetRegisterEntity;
   end;
 
 var
@@ -74,6 +84,28 @@ end;
 procedure TEditTableForm.SetDeployPath(Value :string);
 begin
    EditDeployPath.Text := Value;
+end;
+
+function TEditTableForm.GetDeclareAsAbstract:string;
+begin
+   if CheckBoxDeclareAsAbstract.Checked then Result := 'Y'
+   else Result := 'N';
+end;
+
+procedure TEditTableForm.SetDeclareAsAbstract(Value :string);
+begin
+   CheckBoxDeclareAsAbstract.Checked := Value = 'Y';
+end;
+
+function TEditTableForm.GetRegisterEntity:string;
+begin
+   if CheckBoxRegisterEntity.Checked then Result := 'Y'
+   else Result := 'N';
+end;
+
+procedure TEditTableForm.SetRegisterEntity(Value :string);
+begin
+   CheckBoxRegisterEntity.Checked := Value = 'Y';
 end;
 
 end.

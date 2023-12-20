@@ -28,8 +28,6 @@ type
 
     FNameCase            :TRadioGroup;{ This                        }
     FFieldNameFormatting :TRadioGroup;{       are                   }
-    FClassAsAbstract     :TCheckBox;  {           visual            }
-    FWithMappingRegistry :TCheckBox;  {                  properties }
 
     function IsReservedKeyword(const Value: String): Boolean;
     function GetProjectGroup: string; //IOTAProjectGroup;
@@ -107,8 +105,6 @@ type
 
     property NameCase            :TRadioGroup read FNameCase            write FNameCase           ;
     property FieldNameFormatting :TRadioGroup read FFieldNameFormatting write FFieldNameFormatting;
-    property ClassAsAbstract     :TCheckBox   read FClassAsAbstract     write FClassAsAbstract    ;
-    property WithMappingRegistry :TCheckBox   read FWithMappingRegistry write FWithMappingRegistry;
   end;
 
 implementation
@@ -160,23 +156,21 @@ begin
                 '  INDEX_ID                  INTEGER PRIMARY KEY, ' + {The table needs a PK }
                 '  DRIVER_NAME               TEXT               , ' + {DriverName           }
                 '  PARAMS                    TEXT               , ' + {Params               }
-                '  GLB_NAME_CASE             INTEGER            , ' + {Visual                        }
-                '  GLB_FIELD_NAME_FORMATTING INTEGER            , ' + {       properties             }
-                '  GLB_CLASS_AS_ABSTRACT     INTEGER            , ' + {                  of the      }
-                '  GLB_WITH_MAPPING_REGISTRY INTEGER               '+ {                         view }
+                '  GLB_NAME_CASE             INTEGER            , ' + {Visual               }
+                '  GLB_FIELD_NAME_FORMATTING INTEGER              ' + {       properties    }
                 ');                                        ');
 
    ARDB.ExecSQL('CREATE TABLE AR_TABLES (                 ' +
-                '  TABLE_NAME         TEXT   PRIMARY KEY, ' +
-                '  EXISTENCE          TEXT              , ' + {C = Continue; D = Deleted; N = New;}
-                '  CLASS_NAME         TEXT              , ' + {Normally is a 'T' plus the singular versión of the TableName }
-                '  DEPLOY_PATH        TEXT              , ' + {The path where the file is deployed }
-                //'  TARGET_CLASS_NAME  TEXT              , ' +
-                //'  TARGET_FILE_NAME   TEXT              , ' +
-                '  WITH_DETAIL        TEXT              , ' + {Indicates if this table has a detail related table}
-                '  DETAIL_CLASS_NAME  TEXT              , ' + {The detail TABLE_CLASS_NAME ????? is not the Details_Table_name? }
-                '  DETAIL_PROP_NAME   TEXT              , ' +
-                '  DETAIL_UNIT_NAME   TEXT                ' +
+                '  TABLE_NAME          TEXT   PRIMARY KEY, ' +
+                '  EXISTENCE           TEXT              , ' + {C = Continue; D = Deleted; N = New;}
+                '  CLASS_NAME          TEXT              , ' + {Normally is a 'T' plus the singular versión of the TableName }
+                '  DEPLOY_PATH         TEXT              , ' + {The path where the file is deployed }
+                '  DECLARE_AS_ABSTRACT TEXT              , ' +
+                '  REGISTER_ENTITY     TEXT              , ' +
+                '  WITH_DETAIL         TEXT              , ' + {Indicates if this table has a detail related table}
+                '  DETAIL_CLASS_NAME   TEXT              , ' + {The detail TABLE_CLASS_NAME ????? is not the Details_Table_name? }
+                '  DETAIL_PROP_NAME    TEXT              , ' +
+                '  DETAIL_UNIT_NAME    TEXT                ' +
 
                 ');                                       ');
 
@@ -353,11 +347,13 @@ begin
           try
              { Still does not exists this row }
              if Qt.IsEmpty then begin
-                ARDB.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME,   '+
-                                    '                       CLASS_NAME,   '+
-                                    '                       DEPLOY_PATH,  '+
-                                    '                       EXISTENCE )   '+
-                                    'VALUES (''%s'', ''%s'', ''%s'', ''N'');', [Table, ClassName, DeployPath]));
+                ARDB.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME         , ' +
+                                    '                       CLASS_NAME         , ' +
+                                    '                       DEPLOY_PATH        , ' +
+                                    '                       DECLARE_AS_ABSTRACT, ' +
+                                    '                       REGISTER_ENTITY    , ' +
+                                    '                       EXISTENCE          ) ' +
+                                    'VALUES (''%s'', ''%s'', ''%s'', ''N'', ''N'', ''N'');', [Table, ClassName, DeployPath]));
              end
              else begin
                 ARDB.ExecSQL(Format('UPDATE AR_TABLES SET EXISTENCE = ''C''  '+
@@ -432,10 +428,12 @@ var Qt :TFDQuery;
 begin
    Qt := TFDQuery.Create(nil);
    Qt.Connection := ARDB;
-   Qt.SQL.Add('SELECT TABLE_NAME,  '+
-              '       CLASS_NAME,  '+
-              '       DEPLOY_PATH  '+
-              'FROM AR_TABLES   ;  ');
+   Qt.SQL.Add('SELECT TABLE_NAME         , ' +
+              '       CLASS_NAME         , ' +
+              '       DEPLOY_PATH        , ' +
+              '       DECLARE_AS_ABSTRACT, ' +
+              '       REGISTER_ENTITY      ' +
+              'FROM AR_TABLES            ; ');
 
    Qf := TFDQuery.Create(nil);
    Qf.Connection := ARDB;
@@ -448,9 +446,11 @@ begin
       Qt.Open;
       while not Qt.EOF do begin
          Tables.Insert;
-         Tables.FieldByName('TABLE_NAME' ).AsString := Qt.FieldByName('TABLE_NAME' ).AsString;
-         Tables.FieldByName('CLASS_NAME' ).AsString := Qt.FieldByName('CLASS_NAME' ).AsString;
-         Tables.FieldByName('DEPLOY_PATH').AsString := Qt.FieldByName('DEPLOY_PATH').AsString;
+         Tables.FieldByName('TABLE_NAME'         ).AsString := Qt.FieldByName('TABLE_NAME'         ).AsString;
+         Tables.FieldByName('CLASS_NAME'         ).AsString := Qt.FieldByName('CLASS_NAME'         ).AsString;
+         Tables.FieldByName('DEPLOY_PATH'        ).AsString := Qt.FieldByName('DEPLOY_PATH'        ).AsString;
+         Tables.FieldByName('DECLARE_AS_ABSTRACT').AsString := Qt.FieldByName('DECLARE_AS_ABSTRACT').AsString;
+         Tables.FieldByname('REGISTER_ENTITY'    ).AsString := Qt.FieldByName('REGISTER_ENTITY'    ).AsString;
          Tables.Post;
 
          Qf.ParamByName('prmTABLE_NAME').AsString := Qt.FieldByName('TABLE_NAME').AsString;
@@ -478,12 +478,7 @@ end;
 
 procedure TARGeneratorController.SaveVisualData;
 var Q :TFDQuery;
-    ClassAsAbstract     :Integer;
-    WithMappingRegistry :Integer;
 begin
-   if FClassAsAbstract.Checked     then ClassAsAbstract     := 1 else ClassAsAbstract     := 0;
-   if FWithMappingRegistry.Checked then WithMappingRegistry := 1 else WithMappingRegistry := 0;
-
    Q := TFDQuery.Create(nil);
    Q.Connection := ARDB;
    Q.SQL.Add(Format('SELECT INDEX_ID FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
@@ -493,26 +488,18 @@ begin
       if Q.IsEmpty then begin
          ARDB.ExecSQL(Format('INSERT INTO AR_CONNECTION (INDEX_ID                  , ' +
                              '                           GLB_NAME_CASE             , ' +
-                             '                           GLB_FIELD_NAME_FORMATTING , ' +
-                             '                           GLB_CLASS_AS_ABSTRACT     , ' +
-                             '                           GLB_WITH_MAPPING_REGISTRY )  '+
-                             'VALUES (%d, %d, %d, %d, %d                           );  ',
+                             '                           GLB_FIELD_NAME_FORMATTING ) ' +
+                             'VALUES (%d, %d, %d                                   );  ',
                              [CONNECTION_INDEX              ,
                               FNameCase.ItemIndex           ,
-                              FFieldNameFormatting.ItemIndex,
-                              ClassAsAbstract     ,
-                              WithMappingRegistry]));
+                              FFieldNameFormatting.ItemIndex]));
       end
       else begin
          ARDB.ExecSQL(Format('UPDATE AR_CONNECTION SET GLB_NAME_CASE             = %d ,  '+
-                             '                         GLB_FIELD_NAME_FORMATTING = %d ,  '+
-                             '                         GLB_CLASS_AS_ABSTRACT     = %d ,  '+
-                             '                         GLB_WITH_MAPPING_REGISTRY = %d    '+
+                             '                         GLB_FIELD_NAME_FORMATTING = %d    '+
                              'WHERE INDEX_ID = %d;                                       ',
                              [FNameCase.ItemIndex           ,
                               FFieldNameFormatting.ItemIndex,
-                              ClassAsAbstract     ,
-                              WithMappingRegistry ,
                               CONNECTION_INDEX    ]));
       end;
    finally
@@ -538,8 +525,6 @@ begin
       if Q.IsEmpty then begin
          NameCase.ItemIndex            := 0;
          FieldNameFormatting.ItemIndex := 0;
-         ClassAsAbstract.Checked       := False;
-         WithMappingRegistry.Checked   := False;
       end
       else begin
          QS := TFDQuery.Create(nil);
@@ -553,8 +538,6 @@ begin
             QS.Open;
             NameCase.ItemIndex            := QS.FieldByName('GLB_NAME_CASE'            ).AsInteger;
             FieldNameFormatting.ItemIndex := QS.FieldByName('GLB_FIELD_NAME_FORMATTING').AsInteger;
-            ClassAsAbstract.Checked       := QS.FieldByName('GLB_CLASS_AS_ABSTRACT'    ).AsInteger = 1;
-            WithMappingRegistry.Checked   := QS.FieldByName('GLB_WITH_MAPPING_REGISTRY').AsInteger = 1;
          finally
             QS.Free;
          end;
@@ -596,21 +579,29 @@ begin
          try
             { Still does not exists this row }
             if Qt.IsEmpty then begin
-               ARDB.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME,   '+
-                                   '                       CLASS_NAME,   '+
-                                   '                       DEPLOY_PATH,  '+
-                                   '                       EXISTENCE )   '+
-                                   'VALUES (''%s'', ''%s'', ''%s'', ''C'');', [Tables.FieldByName('TABLE_NAME' ).AsString,
-                                                                               Tables.FieldByName('CLASS_NAME' ).AsString,
-                                                                               Tables.FieldByName('DEPLOY_PATH').AsString]));
+               ARDB.ExecSQL(Format('INSERT INTO AR_TABLES (TABLE_NAME         , ' +
+                                   '                       CLASS_NAME         , ' +
+                                   '                       DEPLOY_PATH        , ' +
+                                   '                       DECLARE_AS_ABSTRACT, ' +
+                                    '                      REGISTER_ENTITY    , ' +
+                                   '                       EXISTENCE          ) '+
+                                   'VALUES (''%s'', ''%s'', ''%s'', ''C'');', [Tables.FieldByName('TABLE_NAME'         ).AsString,
+                                                                               Tables.FieldByName('CLASS_NAME'         ).AsString,
+                                                                               Tables.FieldByName('DEPLOY_PATH'        ).AsString,
+                                                                               Tables.FieldByName('DECLARE_AS_ABSTRACT').AsString,
+                                                                               Tables.FieldByName('REGISTER_ENTITY'    ).AsString]));
             end
             else begin
-               ARDB.ExecSQL(Format('UPDATE AR_TABLES SET EXISTENCE   = ''C''  ,  '+
-                                   '                     CLASS_NAME  = ''%s'' ,  '+
-                                   '                     DEPLOY_PATH = ''%s''    '+
-                                   'WHERE TABLE_NAME = ''%s'';               ', [Tables.FieldByName('CLASS_NAME' ).AsString,
-                                                                                 Tables.FieldByName('DEPLOY_PATH').AsString,
-                                                                                 Tables.FieldByName('TABLE_NAME' ).AsString]));
+               ARDB.ExecSQL(Format('UPDATE AR_TABLES SET EXISTENCE           = ''C''  ,  ' +
+                                   '                     CLASS_NAME          = ''%s'' ,  ' +
+                                   '                     DEPLOY_PATH         = ''%s'' ,  ' +
+                                   '                     DECLARE_AS_ABSTRACT = ''%s'' ,  ' +
+                                   '                     REGISTER_ENTITY     = ''%s''    ' +
+                                   'WHERE TABLE_NAME = ''%s'';               ', [Tables.FieldByName('CLASS_NAME'         ).AsString,
+                                                                                 Tables.FieldByName('DEPLOY_PATH'        ).AsString,
+                                                                                 Tables.FieldByName('DECLARE_AS_ABSTRACT').AsString,
+                                                                                 Tables.FieldByName('REGISTER_ENTITY'    ).AsString,
+                                                                                 Tables.FieldByName('TABLE_NAME'         ).AsString]));
             end;
 
          finally
@@ -673,11 +664,15 @@ begin
                                 [Tables.FieldByName('TABLE_NAME').AsString]));
       end
       else begin
-         ARDB.ExecSQL(Format('UPDATE AR_TABLES SET CLASS_NAME  = ''%s'' ,  '+
-                             '                     DEPLOY_PATH = ''%s''    '+
-                             'WHERE TABLE_NAME = ''%s'';               ', [Tables.FieldByName('CLASS_NAME' ).AsString,
-                                                                           Tables.FieldByName('DEPLOY_PATH').AsString,
-                                                                           Tables.FieldByName('TABLE_NAME' ).AsString]));
+         ARDB.ExecSQL(Format('UPDATE AR_TABLES SET CLASS_NAME          = ''%s'' ,  ' +
+                             '                     DEPLOY_PATH         = ''%s'' ,  ' +
+                             '                     DECLARE_AS_ABSTRACT = ''%s'' ,  ' +
+                             '                     REGISTER_ENTITY     = ''%s''    ' +
+                             'WHERE TABLE_NAME = ''%s'';               ', [Tables.FieldByName('CLASS_NAME'         ).AsString,
+                                                                           Tables.FieldByName('DEPLOY_PATH'        ).AsString,
+                                                                           Tables.FieldByName('DECLARE_AS_ABSTRACT').AsString,
+                                                                           Tables.FieldByName('REGISTER_ENTITY'    ).AsString,
+                                                                           Tables.FieldByName('TABLE_NAME'         ).AsString]));
       end;
 
    finally
