@@ -946,13 +946,6 @@ object Main: TMain
     Left = 292
     Top = 406
   end
-  object FDSQLiteBackup1: TFDSQLiteBackup
-    DriverLink = FDPhysSQLiteDriverLink1
-    Catalog = 'MAIN'
-    DestCatalog = 'MAIN'
-    Left = 288
-    Top = 486
-  end
   object PopupMenuGridTables: TPopupMenu
     Left = 384
     Top = 323

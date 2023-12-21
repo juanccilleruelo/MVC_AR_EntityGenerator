@@ -55,8 +55,8 @@ type
     function GetMaxLengthFieldName(FieldNames :TArray<string>):Integer;
     function GetCurrentColumnAttribute(MetaData :TFDMetaInfoQuery):TFDDataAttributes;
     procedure InsertField(IntfCode :TStringStream;
-                          MetaData :TFDMetaInfoQuery;
                           const CW                :Integer; {Column Width}
+                          const ColType           :string;
                           const DatabaseFieldName :string;
                           const UniqueFieldName   :string;
                           const FieldDataType     :TFDDataType;
@@ -731,6 +731,8 @@ var i                      :Integer;
     ColAttrib              :TFDDataAttributes;
     OutputFileName         :string;
     UnitName               :string;
+    ColType                :string;
+    IsPK                   :Boolean;
 
     InterfaceCode          :TStringStream;
     PropertiesCode         :TStringStream;
@@ -778,8 +780,10 @@ begin
 
       InterfaceCode.WriteString('  private' + sLineBreak);
 
+{---- Use of the MetaData ----}
+
       Identifiers := GetUniqueIdentifiers(MetaData, FormatAsPascalCase);
-      MaxLength := GetMaxLengthFieldName(Identifiers);
+      MaxLength   := GetMaxLengthFieldName(Identifiers);
 
       {for each field in the table insert Insert private field definition in the class}
       i := 0;
@@ -788,23 +792,28 @@ begin
          FieldDataType := TFDDataType(MetaData.FieldByName(META_F_COLUMN_DATATYPE).AsInteger);
          ColAttrib     := GetCurrentColumnAttribute(MetaData);
          FieldName     := MetaData.FieldByName(META_F_COLUMN_NAME).AsString;
+         ColType       := MetaData.FieldByName(META_F_COLUMN_TYPENAME).AsString.ToLower;
+         IsPk          := KeyFields.IndexOf(MetaData.FieldByName(META_F_COLUMN_NAME).AsString) > -1;
 
          {$Message Warn 'Indentifers[i] must be CUSTOM_NAME from dsTFields Table'}
-         InsertField(InterfaceCode      ,
-                     MetaData           ,
-                     MaxLength          ,
-                     FieldName          ,
-                     Identifiers[i]     ,
-                     FieldDataType      ,
-                     ColAttrib          ,
-                     KeyFields.IndexOf(MetaData.FieldByName(META_F_COLUMN_NAME).AsString) > -1);
+         InsertField(InterfaceCode , {Returned value}     //IntfCode :TStringStream;
+                     MaxLength     ,                      //const CW                :Integer; {Column Width}
 
-         InsertProperty(PropertiesCode     ,
-                        MaxLength          ,
-                        Identifiers[i]     ,
-                        ColAttrib          ,
-                        FieldDataType      ,
-                        KeyFields.IndexOf(MetaData.FieldByName(META_F_COLUMN_NAME).AsString) > -1);
+                     ColType       ,                      //const ColType           :string;
+                     FieldName     ,                      //const DatabaseFieldName :string;
+
+                     Identifiers[i],                      //const UniqueFieldName   :string;
+                     FieldDataType ,                      //const FieldDataType     :TFDDataType;
+                     ColAttrib     ,                      //const ColumnAttrib      :TFDDataAttributes;
+                     IsPK          );                     //const IsPK              :Boolean);
+
+         InsertProperty(PropertiesCode, {Returned value}  //IntfCode :TStringStream;
+                        MaxLength     ,                   //const CW            :Integer; {Column Width}
+
+                        Identifiers[i],                   //const FieldName     :string;
+                        ColAttrib     ,                   //const ColumnAttrib  :TFDDataAttributes;
+                        FieldDataType ,                   //const FieldDataType :TFDDataType;
+                        IsPK          );                  //const IsPK          :Boolean);
 
          if GetDelphiType(FieldDataType, ColAttrib) = 'TStream' then begin
             FieldNamesToInitialize := FieldNamesToInitialize + [GetFieldName(Identifiers[i])];
@@ -815,6 +824,8 @@ begin
 
          MetaData.Next;
       end;
+
+{---- End of use of the MetaData ----}
 
 
       {Insert the 'end;' at the end of the class definition, After all the properties}
@@ -843,23 +854,6 @@ begin
       end;
       ImplementationCode.WriteString('   inherited;' + sLineBreak);
       ImplementationCode.WriteString('end;' + sLineBreak + sLineBreak);
-
-      (*MetaData.First;
-      i := 0;
-      while not MetaData.EOF do begin
-         FieldDataType := TFDDataType(MetaData.FieldByName(META_F_COLUMN_DATATYPE).AsInteger);
-         ColAttrib     := GetCurrentColumnAttribute(MetaData);
-
-         InsertProperty(InterfaceCode      ,
-                        MaxLength          ,
-                        Identifiers[i]     ,
-                        ColAttrib          ,
-                        FieldDataType      ,
-                        KeyFields.IndexOf(MetaData.FieldByName(META_F_COLUMN_NAME).AsString) > -1);
-
-         Inc(i);
-         MetaData.Next;
-      end;*)
 
       {Insert the 'end.' at the end of the file}
       InitializationCode.WriteString(sLineBreak + 'end.');
@@ -1023,7 +1017,7 @@ begin
          Count := 0;
          while List.IndexOf(FTemp) > -1 do begin
             Inc(Count);
-            FTemp := Field + '__' + IntToStr(Count);
+            FTemp := Field + '_' + IntToStr(Count);
          end;
 
          Field := FTemp;
@@ -1064,8 +1058,8 @@ begin
 end;
 
 procedure TARGeneratorController.InsertField(IntfCode :TStringStream;
-                                             MetaData :TFDMetaInfoQuery;
                                              const CW                :Integer; {Column Width}
+                                             const ColType           :string;
                                              const DatabaseFieldName :string;
                                              const UniqueFieldName   :string;
                                              const FieldDataType     :TFDDataType;
@@ -1073,7 +1067,6 @@ procedure TARGeneratorController.InsertField(IntfCode :TStringStream;
                                              const IsPK              :Boolean);
 var RTTIAttrib :string;
     Field      :string;
-    ColType    :string;
 begin
    if IsPK then begin
       if caAutoInc in ColumnAttrib then
@@ -1082,16 +1075,14 @@ begin
          RTTIAttrib := Format('[MVCTableField(''%s'', [foPrimaryKey])]', [DatabaseFieldName])
    end
    else begin
-      ColType := MetaData.FieldByName(META_F_COLUMN_TYPENAME).AsString.ToLower;
       if ColType.Contains('json') or ColType.Contains('xml') then
          RTTIAttrib := Format('[MVCTableField(''%s'', [], ''%s'')]', [DatabaseFieldName, ColType])
       else
          RTTIAttrib := Format('[MVCTableField(''%s'')]', [DatabaseFieldName])
    end;
 
-   if IsPK and (caAutoInc in ColumnAttrib) then begin
-      Field := Col(GetFieldName(UniqueFieldName), CW) + ' :' + GetDelphiType(FieldDataType, ColumnAttrib, True) + ';' + sLineBreak;
-   end
+   if IsPK and (caAutoInc in ColumnAttrib) then
+      Field := Col(GetFieldName(UniqueFieldName), CW) + ' :' + GetDelphiType(FieldDataType, ColumnAttrib, True) + ';' + sLineBreak
    else
       Field := Col(GetFieldName(UniqueFieldName), CW) + ' :' + GetDelphiType(FieldDataType, ColumnAttrib) + ';' + sLineBreak;
 
@@ -1162,7 +1153,6 @@ procedure TARGeneratorController.InsertProperty(IntfCode :TStringStream;
                                                 const IsPK          :Boolean);
 var Prop: string;
 begin
-   {$Message warn ' Encolumnate these parts of properties'}
    if IsPK then begin
       Prop := Prop + 'property ' + Col(GetFieldName(FieldName).Substring(1), CW) { remove f } + ' :' +
          Col(GetDelphiType(FieldDataType, ColumnAttrib, [caAllowNull,caAutoInc] * ColumnAttrib <> []), 20)
@@ -1174,12 +1164,10 @@ begin
          + ' read ' + Col(GetFieldName(FieldName), CW) + ' write ' + Col(GetFieldName(FieldName), CW) + ';' + sLineBreak;
    end;
 
-   if GetDelphiType(FieldDataType, ColumnAttrib).ToUpper.Contains('UNSUPPORTED TYPE') then begin
+   if GetDelphiType(FieldDataType, ColumnAttrib).ToUpper.Contains('UNSUPPORTED TYPE') then
       Prop := '  //' + Prop
-   end
-   else begin
+   else
       Prop := '  ' + Prop;
-   end;
 
    IntfCode.WriteString('  ' + Prop)
 end;

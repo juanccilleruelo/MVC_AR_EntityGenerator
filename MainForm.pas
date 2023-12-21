@@ -97,7 +97,6 @@ type
     TabSheetSource: TTabSheet;
     MemoOutputCode: TMemo;
     PanelSource: TPanel;
-    FDSQLiteBackup1: TFDSQLiteBackup;
     ActionConnectDatabase: TAction;
     dsTablesDECLARE_AS_ABSTRACT: TStringField;
     dsTablesREGISTER_ENTITY: TStringField;
