@@ -34,7 +34,7 @@ type
     FDPhysSQLiteDriverLink1: TFDPhysSQLiteDriverLink;
     Panel8: TPanel;
     BtnSaveProject: TButton;
-    ProjectOpenDialog: TFileOpenDialog;
+    DialogOpenProject: TFileOpenDialog;
     MainMenu: TMainMenu;
     ActionList: TActionList;
     ActionOpenProject: TAction;
@@ -120,6 +120,8 @@ type
     ActionMarkAllRegisterEntity: TAction;
     ActionUnmarkAllRegisterEntity: TAction;
     ActionInvertMarksRegisterEntity: TAction;
+    MenuItemOpenRecent: TMenuItem;
+    MenuItemReopenLastOneOnEnter: TMenuItem;
     procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure ActionOpenProjectExecute(Sender: TObject);
@@ -154,14 +156,25 @@ type
     procedure ActionUnmarkAllRegisterEntityExecute(Sender: TObject);
     procedure ActionInvertMarksRegisterEntityExecute(Sender: TObject);
   private
-    FProjectName :string;
-    FModified    :Boolean; {Changes not saved on disk}
-    Log          :ILogWriter;
-    Controller   :TARGeneratorController; {Controller of this project}
-    procedure ResetUI;
+    RegRoot       :string;  {Windows Registry Root}
+    FRecentlyOpen :TStringList;
+    FFileName     :string; {The complete path of the poject. With file name.}
+    FModified     :Boolean; {Changes not saved on disk}
+    Log           :ILogWriter;
+    Controller    :TARGeneratorController; {Controller of this project}
+    procedure ResetAllData;
+    procedure LoadProject;
     procedure SetOnViewDataFromMemory;
     procedure DisableVisualEvents;
     procedure EnableVisualEvents;
+    procedure LoadSettings;
+    procedure SaveSettings;
+    procedure UpdateOpenRecentSubItems;
+    procedure MenuItemOpenRecent_OnClick(Sender: TObject);
+    procedure SetLastOpened(AFileName :string);
+    function GetProjectName:string;
+
+    property ProjectName :string read GetProjectName; {The name of the project. Without path.}
   public
   end;
 
@@ -173,12 +186,25 @@ const
    LOG_TAG                = 'generator';
    NOT_SAVED_PROJECT_NAME = 'Untitled.entgen';
 
+   REG_REOPEN_LAST = 'ReopenLast';
+   REG_LAST_0      = 'Last Opened 0';
+   REG_LAST_1      = 'Last Opened 1';
+   REG_LAST_2      = 'Last Opened 2';
+   REG_LAST_3      = 'Last Opened 3';
+   REG_LAST_4      = 'Last Opened 4';
+   REG_LAST_5      = 'Last Opened 5';
+   REG_LAST_6      = 'Last Opened 6';
+   REG_LAST_7      = 'Last Opened 7';
+   REG_LAST_8      = 'Last Opened 8';
+   REG_LAST_9      = 'Last Opened 9';
+
 implementation
 
 uses System.IOUtils,
      System.TypInfo,
      System.UITypes,
      System.DateUtils,
+     System.Win.Registry,
      LoggerPro.GlobalLogger,
      System.Generics.Collections,
      MVCFramework.Commons,
@@ -191,11 +217,15 @@ uses System.IOUtils,
 
 procedure TMain.FormCreate(Sender: TObject);
 var UILogFormat :string;
+    i           :Integer;
 begin
    FModified    := False;
-   FProjectName := '';
+   FFileName    := ExtractFilePath(ParamStr(0)) + NOT_SAVED_PROJECT_NAME;
 
-   ProjectOpenDialog.DefaultExtension := 'entgen';
+   FRecentlyOpen := TStringList.Create;
+   for i := 0 to 9 do FRecentlyOpen.Add('');
+
+   DialogOpenProject.DefaultExtension := 'entgen';
 
    {Configures LoggerPro}
    UILogFormat := '%0:s [%2:-10s] %3:s';
@@ -220,10 +250,26 @@ begin
    Controller.Connection          := DBConnection;
    Controller.NameCase            := RadioGroupNameCase;
    Controller.FieldNameFormatting := RadioGroupFieldNameFormatting;
+   Controller.CreateEntGenDB;
+
+   RegRoot := '\Software\'+TPath.GetFileNameWithoutExtension(ParamStr(0));
+   LoadSettings;
+   UpdateOpenRecentSubItems;
+
+
+
+   { Open the last project used, if configured }
+   if (MenuItemOpenRecent.Count > 0) and (MenuItemReopenLastOneOnEnter.Checked) then begin
+      FFileName := FRecentlyOpen[0];
+
+      LoadProject;
+   end;
 end;
 
 procedure TMain.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
+   SaveSettings;
+   FRecentlyOpen.Free;
    Controller.Free;
 end;
 
@@ -239,16 +285,160 @@ begin
    RadioGroupFieldNameFormatting.OnClick := RadioGroupFieldNameFormattingClick;
 end;
 
+procedure TMain.LoadSettings;
+var Reg :TRegistry;
+begin
+   Reg := TRegistry.Create;
+   Reg.RootKey := HKEY_CURRENT_USER;
+   try
+      if not Reg.KeyExists(RegRoot) then begin
+         Reg.CreateKey(RegRoot);
+         try
+            { Second param is True, because we want to create it if it doesn't exist }
+            Reg.OpenKey(RegRoot, True);
+            Reg.WriteString(REG_REOPEN_LAST, 'Y');
+            Reg.WriteString(REG_LAST_0     , '');
+            Reg.WriteString(REG_LAST_1     , '');
+            Reg.WriteString(REG_LAST_2     , '');
+            Reg.WriteString(REG_LAST_3     , '');
+            Reg.WriteString(REG_LAST_4     , '');
+            Reg.WriteString(REG_LAST_5     , '');
+            Reg.WriteString(REG_LAST_6     , '');
+            Reg.WriteString(REG_LAST_7     , '');
+            Reg.WriteString(REG_LAST_8     , '');
+            Reg.WriteString(REG_LAST_9     , '');
+         finally
+            Reg.CloseKey;
+         end;
+      end
+      else begin
+         Reg.OpenKey(RegRoot, False);
+         try
+            MenuItemReopenLastOneOnEnter.Checked := Reg.ReadString(REG_REOPEN_LAST) = 'Y';
+            FRecentlyOpen[0] := Reg.ReadString(REG_LAST_0);
+            FRecentlyOpen[1] := Reg.ReadString(REG_LAST_1);
+            FRecentlyOpen[2] := Reg.ReadString(REG_LAST_2);
+            FRecentlyOpen[3] := Reg.ReadString(REG_LAST_3);
+            FRecentlyOpen[4] := Reg.ReadString(REG_LAST_4);
+            FRecentlyOpen[5] := Reg.ReadString(REG_LAST_5);
+            FRecentlyOpen[6] := Reg.ReadString(REG_LAST_6);
+            FRecentlyOpen[7] := Reg.ReadString(REG_LAST_7);
+            FRecentlyOpen[8] := Reg.ReadString(REG_LAST_8);
+            FRecentlyOpen[9] := Reg.ReadString(REG_LAST_9);
+         finally
+            Reg.CloseKey;
+         end;
+      end;
+   finally
+      Reg.Free;
+   end;
+end;
+
+procedure TMain.SaveSettings;
+var Reg :TRegistry;
+begin
+   Reg := TRegistry.Create;
+   Reg.RootKey := HKEY_CURRENT_USER;
+   try
+      Reg.OpenKey(RegRoot, False);
+      try
+         if MenuItemReopenLastOneOnEnter.Checked then
+            Reg.WriteString(REG_REOPEN_LAST, 'Y')
+         else
+            Reg.WriteString(REG_REOPEN_LAST, 'N');
+
+         Reg.WriteString(REG_LAST_0, FRecentlyOpen[0]);
+         Reg.WriteString(REG_LAST_1, FRecentlyOpen[1]);
+         Reg.WriteString(REG_LAST_2, FRecentlyOpen[2]);
+         Reg.WriteString(REG_LAST_3, FRecentlyOpen[3]);
+         Reg.WriteString(REG_LAST_4, FRecentlyOpen[4]);
+         Reg.WriteString(REG_LAST_5, FRecentlyOpen[5]);
+         Reg.WriteString(REG_LAST_6, FRecentlyOpen[6]);
+         Reg.WriteString(REG_LAST_7, FRecentlyOpen[7]);
+         Reg.WriteString(REG_LAST_8, FRecentlyOpen[8]);
+         Reg.WriteString(REG_LAST_9, FRecentlyOpen[9]);
+      finally
+         Reg.CloseKey;
+      end;
+   finally
+      Reg.Free;
+   end;
+end;
+
+procedure TMain.UpdateOpenRecentSubItems;
+var i        :Integer;
+    FileName :string;
+    MenuItem :TMenuItem;
+begin
+   { Delete all MenuItems owned by MenuItemOpenRecent }
+   MenuItemOpenRecent.Clear; // removes submenu items
+
+   {Insert the new Menu Items}
+   for i := 0 to 9 do begin
+      FileName := FRecentlyOpen[i];
+      if not FileName.IsEmpty then begin
+         MenuItem := TMenuItem.Create(MenuItemOpenRecent);
+         MenuItem.Caption := Format('%d %s', [i, FileName]);
+         MenuItem.OnClick := MenuItemOpenRecent_OnClick;
+         MenuItemOpenRecent.Add(MenuItem);
+      end;
+  end;
+end;
+
+procedure TMain.MenuItemOpenRecent_OnClick(Sender: TObject);
+begin
+   {The project has not modifications}
+   if (FModified) or (ProjectName <> NOT_SAVED_PROJECT_NAME) or (not DBConnection.Params.IsEmpty) then begin
+      case MessageDlg(Format('Current changes in the project will be lost. Continue?', [ProjectName]), mtConfirmation, [mbYes, mbCancel], 0) of
+         mrCancel: Exit;
+      end;
+   end;
+   FFileName := TMenuItem(Sender).Caption.SubString(3);
+   LoadProject;
+end;
+
+function TMain.GetProjectName:string;
+begin
+   Result := ExtractFileName(FFileName);
+end;
+
+procedure TMain.SetLastOpened(AFileName :string);
+var i     :Integer;
+    Index :Integer;
+begin
+   // Set this file as the last opened by the user.
+
+   { If the file is in the first position, nothing to do}
+   if FRecentlyOpen[0] = AFileName then Exit;
+
+   { if the file is in the list }
+   Index := FRecentlyOpen.IndexOf(AFileName);
+   if Index <> -1 then begin
+      { Move the downpart of the list to fill the gap }
+      for i := Index downto 1 do FRecentlyOpen[i] := FRecentlyOpen[i -1];
+
+      //Put AFileName in the first position.
+      FRecentlyOpen[0] := AFileName;
+   end
+   { Move all to the next position, loosing the last and
+     put the new in the first position }
+   else begin
+      { Move all to the next position }
+      for i := 9 downto 1 do FRecentlyOpen[i] := FRecentlyOpen[i-1];
+
+      //Put AFileName in the first position.
+      FRecentlyOpen[0] := AFileName;
+   end;
+end;
+
 procedure TMain.GridTablesDblClick(Sender: TObject);
 begin
    ActionEditTable.Execute;
 end;
 
 procedure TMain.GridTablesDrawColumnCell(Sender: TObject; const Rect: TRect; DataCol: Integer; Column: TColumn; State: TGridDrawState);
-const
-  CtrlState   :array[Boolean] of Integer = (DFCS_BUTTONCHECK, DFCS_BUTTONCHECK or DFCS_CHECKED);
+const CtrlState   :array[Boolean] of Integer = (DFCS_BUTTONCHECK, DFCS_BUTTONCHECK or DFCS_CHECKED);
 var CheckBoxRectangle :TRect;
-    Details           :TThemedElementDetails;
 begin
    GridTables.DrawingStyle := gdsClassic;
    GridTables.Columns[0].Title.Color := clBtnShadow;
@@ -272,7 +462,6 @@ begin
          DrawFrameControl(TDBGrid(Sender).Canvas.Handle, CheckBoxRectangle, DFC_BUTTON, CtrlState[False]);
       end;
    end;
-
 end;
 
 procedure TMain.GridTablesTitleClick(Column: TColumn);
@@ -289,7 +478,7 @@ end;
 procedure TMain.MenuItemEditTableClick(Sender: TObject);
 var EditTable :TEditTableForm;
 begin
-   if FProjectName.IsEmpty then Exit;
+   if ProjectName.IsEmpty then Exit;
 
    EditTable := TEditTableForm.Create(nil);
    try
@@ -340,7 +529,7 @@ end;
 procedure TMain.ActionEditFieldExecute(Sender: TObject);
 var EditField :TEditFieldForm;
 begin
-   if FProjectName.IsEmpty then Exit;
+   if ProjectName.IsEmpty then Exit;
 
    EditField := TEditFieldForm.Create(nil);
    try
@@ -366,7 +555,7 @@ end;
 procedure TMain.ActionEditTableExecute(Sender: TObject);
 var EditTable :TEditTableForm;
 begin
-   if FProjectName.IsEmpty then Exit;
+   if ProjectName.IsEmpty then Exit;
 
    EditTable := TEditTableForm.Create(nil);
    try
@@ -480,7 +669,7 @@ end;
 
 procedure TMain.ActionGenerateAllUpdate(Sender: TObject);
 begin
-   ActionGenerateAll.Enabled := not FProjectName.IsEmpty;
+   ActionGenerateAll.Enabled := not ProjectName.IsEmpty;
 end;
 
 procedure TMain.ActionGenerateCurrentExecute(Sender: TObject);
@@ -514,7 +703,7 @@ end;
 
 procedure TMain.ActionGenerateCurrentUpdate(Sender: TObject);
 begin
-   ActionGenerateCurrent.Enabled := not FProjectName.IsEmpty;
+   ActionGenerateCurrent.Enabled := not ProjectName.IsEmpty;
 end;
 
 procedure TMain.ActionInvertMarksDeclareAsAbstractExecute(Sender: TObject);
@@ -670,35 +859,26 @@ end;
 
 procedure TMain.ActionNewProjectExecute(Sender: TObject);
 begin
-   {$Message Warn 'Be sure all is correct before create a new project'}
-   {ARDB Connected means that there are a Database in Memory}
-   if ARDB.Connected then begin
-      {if there are changes not saved to disk}
-      if FModified then begin
-
-
+   if FModified then begin
+      case MessageDlg(Format('Current changes in the project will be lost. Continue?', [ProjectName]), mtConfirmation, [mbYes, mbCancel], 0) of
+         mrCancel: Exit;
       end;
-   end
-   else begin
-      {$Message Warn 'Initialize all the data'}
-      Controller.CreateEntGenDB;
-      dsTables.Open;
-      dsFields.Open;
-      FProjectName := NOT_SAVED_PROJECT_NAME;
-      FModified    := True;
-      Caption      := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-      Log.Info('Created and empty project', LOG_TAG);
    end;
+
+   ResetAllData;
+   FFileName := ExtractFilePath(ParamStr(0)) + NOT_SAVED_PROJECT_NAME;
+   FModified := False;
+   Caption   := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [ProjectName, DMVCFRAMEWORK_VERSION]);
+   Log.Info('Created a new empty project', LOG_TAG);
 end;
 
 procedure TMain.ActionSaveProjectAsExecute(Sender: TObject);
 begin
    {Get the desired project name}
-   DialogSaveProject.FileName := FProjectName;
    if DialogSaveProject.Execute then begin
-      FProjectName := ExtractFileName(DialogSaveProject.FileName);
-      Caption      := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-      Log.Info('Project '+FProjectName+' ready to be saved.', LOG_TAG);
+      FFileName := DialogSaveProject.FileName;
+      Caption   := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [ProjectName, DMVCFRAMEWORK_VERSION]);
+      Log.Info('Project '+ProjectName+' ready to be saved.', LOG_TAG);
       ActionSaveProject.Execute;
    end
    else Exit;
@@ -712,52 +892,61 @@ end;
 procedure TMain.ActionSaveProjectExecute(Sender: TObject);
 begin
    {Saves all the pendant changes to memory database}
-   if FProjectName = NOT_SAVED_PROJECT_NAME then begin
+   if ProjectName = NOT_SAVED_PROJECT_NAME then begin
       DialogSaveProject.DefaultFolder := ExtractFilePath(ParamStr(0));
-      FProjectName := DEFAULT_PROJECT_NAME;
+      DialogSaveProject.FileName      := DEFAULT_PROJECT_NAME;
       ActionSaveProjectAs.Execute;
    end
    else begin
-      if Controller.SaveProject(FProjectName) then begin
-         FModified    := False;
+      if Controller.SaveProject(FFileName) then begin
+         FModified := False;
          ActionRefreshMetadata.Execute;
-         Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-         Log.Info(Format('Database %s saved on disk', [FProjectName]), LOG_TAG);
+         Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [ProjectName, DMVCFRAMEWORK_VERSION]);
+         Log.Info(Format('Database %s saved on disk', [ProjectName]), LOG_TAG);
+         SetLastOpened(FFileName);
+         UpdateOpenRecentSubItems;
       end
       else begin
-         Log.Info('Project '+FProjectName+' failed to be saved on disk.', LOG_TAG);
+         Log.Info('Project '+ProjectName+' failed to be saved on disk.', LOG_TAG);
          raise Exception.Create('Error saving data');
       end;
+   end;
+end;
+
+procedure TMain.LoadProject;
+begin
+   DisableVisualEvents;
+   {Before Load a project we need to delete the current}
+   ResetAllData;
+   try
+      if Controller.LoadProject(FFileName) then begin
+         SetOnViewDataFromMemory;
+         if not DBConnection.Params.IsEmpty then begin
+            DBConnection.Open;
+         end;
+         FModified := False;
+         SetLastOpened(FFileName);
+         UpdateOpenRecentSubItems;
+         Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [ProjectName, DMVCFRAMEWORK_VERSION]);
+      end;
+   finally
+      EnableVisualEvents;
    end;
 end;
 
 procedure TMain.ActionOpenProjectExecute(Sender: TObject);
 begin
    {The project has not modifications}
-   if (FModified) or (FProjectName <> NOT_SAVED_PROJECT_NAME) or (not DBConnection.Params.IsEmpty) then begin
-      case MessageDlg(Format('Current changes in the project will be lost. Continue?', [TPath.GetFileName(FProjectName)]), mtConfirmation, [mbYes, mbCancel], 0) of
+   if (FModified) or (ProjectName <> NOT_SAVED_PROJECT_NAME) or (not DBConnection.Params.IsEmpty) then begin
+      case MessageDlg(Format('Current changes in the project will be lost. Continue?', [ProjectName]), mtConfirmation, [mbYes, mbCancel], 0) of
          mrCancel: Exit;
       end;
    end;
 
    {The project name was never saved}
-   if ProjectOpenDialog.Execute then begin
-      FProjectName := ExtractFileName(ProjectOpenDialog.FileName);
-      DisableVisualEvents;
-      try
-         if Controller.LoadProject(FProjectName) then begin
-            dsTables.Open;
-            dsFields.Open;
-            SetOnViewDataFromMemory;
-            if not DBConnection.Params.IsEmpty then begin
-               DBConnection.Open;
-            end;
-            FModified := False;
-            Caption := Format('DMVCFramework Entities Generator :: [%0:s] - DMVCFramework-%1:s', [FProjectName, DMVCFRAMEWORK_VERSION]);
-         end;
-      finally
-         EnableVisualEvents;
-      end;
+   if DialogOpenProject.Execute then begin
+      FFileName := DialogOpenProject.FileName;
+      LoadProject;
    end;
 end;
 
@@ -831,7 +1020,6 @@ begin
    ActionEditField.Execute;
 end;
 
-
 procedure TMain.GridFieldsDrawColumnCell(Sender: TObject; const Rect: TRect; DataCol: Integer; Column: TColumn; State: TGridDrawState);
 begin
    GridFields.DrawingStyle           := gdsClassic;
@@ -850,13 +1038,31 @@ begin
    FModified := True;
 end;
 
-procedure TMain.ResetUI;
+procedure TMain.ResetAllData;
 begin
+   dsTables.Open;
+   dsFields.Open;
+
+   {First the view data}
+   dsFields.EmptyDataSet;
+   dsTables.EmptyDataSet;
+
+   {Now In memory DB data}
+   Controller.EmptyEntGenDB;
+
+   {Now the User Connection}
+   DBConnection.Close;
+   DBConnection.DriverName := '';
+   DBConnection.Params.Clear;
+   DBConnection.LoginPrompt := False;
+
+   {Now visual controls}
    RadioGroupNameCase.ItemIndex            := 0;
    RadioGroupFieldNameFormatting.ItemIndex := 0;
 
-   dsFields.EmptyDataSet;
-   dsTables.EmptyDataSet;
+   FModified := False;
+
+   //FFileName := ExtractFilePath(ParamStr(0)) + NOT_SAVED_PROJECT_NAME;
 end;
 
 end.

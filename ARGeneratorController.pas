@@ -93,11 +93,12 @@ type
     function CreateEntGenDB:Boolean;
     function RefreshMetadata(FormatAsPascalCase :Boolean):Boolean;
     procedure FillViewData(Tables, Fields :TFDMemTable);
+    procedure EmptyEntGenDB;
     {***}procedure SavePendantData(Tables, Fields :TFDMemTable);
     procedure SaveCurrentViewTableToMemory(Tables :TFDMemTable);
     procedure SaveCurrentViewFieldToMemory(Fields :TFDMemTable);
-    function SaveProject(ProjectName :string):Boolean;
-    function LoadProject(ProjectName :string):Boolean;
+    function SaveProject(ProjectFile :string):Boolean;
+    function LoadProject(ProjectFile :string):Boolean;
   public
     property ARDB        :TFDConnection read FARDB        write FARDB;
     property Connection  :TFDConnection read FConnection  write FConnection;
@@ -183,6 +184,16 @@ begin
                 ');                                           ');
 end;
 
+procedure TARGeneratorController.EmptyEntGenDB;
+begin
+   {Instead of Delete all the objects in database we'll delete all datas}
+   {I think is more efficient and less problematic }
+
+   ARDB.ExecSQL('DELETE FROM AR_FIELDS;     ');
+   ARDB.ExecSQL('DELETE FROM AR_TABLES;     ');
+   ARDB.ExecSQL('DELETE FROM AR_CONNECTION; ');
+end;
+
 procedure TARGeneratorController.SaveDBConnectionInfo;
 var Q :TFDQuery;
 begin
@@ -257,7 +268,7 @@ begin
    end;
 end;
 
-function TARGeneratorController.SaveProject(ProjectName :string):Boolean;
+function TARGeneratorController.SaveProject(ProjectFile :string):Boolean;
 var BackupDB :TFDSQLiteBackup;
     DLink    :TFDPhysSQLiteDriverLink;
 begin
@@ -272,7 +283,7 @@ begin
       BackupDB.DriverLink   := DLink;
       BackupDB.DatabaseObj  := ARDB.CliObj;
       BackupDB.DestMode     := TSQLiteDatabaseMode.smCreate;
-      BackupDB.DestDatabase := ProjectName;
+      BackupDB.DestDatabase := ProjectFile;
       BackupDB.Backup;
       Result := True;
    finally
@@ -280,7 +291,7 @@ begin
    end;
 end;
 
-function TARGeneratorController.LoadProject(ProjectName :string):Boolean;
+function TARGeneratorController.LoadProject(ProjectFile :string):Boolean;
 var RestoreDB :TFDSQLiteBackup;
     DLink     :TFDPhysSQLiteDriverLink;
 begin
@@ -292,7 +303,7 @@ begin
       RestoreDB.DriverLink      := DLink;
       RestoreDB.DestDatabaseObj := ARDB.CliObj;
       RestoreDB.DestMode        := TSQLiteDatabaseMode.smCreate;
-      RestoreDB.Database        := ProjectName;
+      RestoreDB.Database        := ProjectFile;
       RestoreDB.Backup;
       Result := True;
    finally
@@ -530,9 +541,7 @@ begin
          QS := TFDQuery.Create(nil);
          QS.Connection := ARDB;
          QS.SQL.Add(Format('SELECT GLB_NAME_CASE            ,      ' +
-                           '       GLB_FIELD_NAME_FORMATTING,      ' +
-                           '       GLB_CLASS_AS_ABSTRACT    ,      ' +
-                           '       GLB_WITH_MAPPING_REGISTRY       ' +
+                           '       GLB_FIELD_NAME_FORMATTING       ' +
                            'FROM AR_CONNECTION WHERE INDEX_ID = %d', [CONNECTION_INDEX]));
          try
             QS.Open;

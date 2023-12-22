@@ -426,8 +426,9 @@ object Main: TMain
     Left = 504
     Top = 408
   end
-  object ProjectOpenDialog: TFileOpenDialog
+  object DialogOpenProject: TFileOpenDialog
     FavoriteLinks = <>
+    FileName = 'C:\Views\MVC_AR_EntityGenerator'
     FileTypes = <
       item
         DisplayName = 'DMVC Entities Generator Project'
@@ -448,6 +449,14 @@ object Main: TMain
       end
       object MenuItemLoadProject: TMenuItem
         Action = ActionOpenProject
+      end
+      object MenuItemOpenRecent: TMenuItem
+        Caption = 'Open Recent'
+      end
+      object MenuItemReopenLastOneOnEnter: TMenuItem
+        AutoCheck = True
+        Caption = 'Reopen Last one on enter.'
+        Checked = True
       end
       object MenuItemSaveProject: TMenuItem
         Action = ActionSaveProject
