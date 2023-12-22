@@ -3,7 +3,7 @@
 Tired of creating the descendants of TActiveRecord by hand?
 
 https://github.com/juanccilleruelo/MVC_AR_EntityGenerator
-is an OpenSource project developed in Delphi XE 12 that takes the metadata of your Database and creates one class ActiveRecord of each Table in the Database.
+Is an OpenSource project developed in Delphi XE 12 that takes the metadata of your Database and creates one class ActiveRecord of each Table in the Database.
 
 You can generate the AR of one table or one AR class for each table in the Database. You can indicate in which folder the AR file should be deployed, and the program will remember it. 
 Each AR is generated in an independent .pas file. 
@@ -26,11 +26,18 @@ Thanks
 
 PD: The project is also an excellent example of using SQLite as a memory store for the data and treating this data as a standalone project, in contrast to the concept of a Database on Disk, which is more current in Delphi.
 
-# Woring in progres... 
+# Woring in progress... 
 
 # Road Map
-  
-  1- Use of Windows Registry to save the last projects, some options and 
-     the list of the las projects to reopen them.
+  1- Improve the modifications that the user can make to generate the ActiveRecord.
+     (Eg: The name of the properties or the data type) 
+     Sometimes, with SQLite databases, the data type suggested by the application is 
+     not the most appropriate for the program. Ref: Dynamic Type System of SQLite.
+
+  2- Implement how we are going to manage the modifications in the Real DB after
+     we modified his data in the program. 
+     (if a field disappeared, if there is a new field on DB or if a field definition
+     has been modified) 
+   
   2- Use of OpenAI IA connection for things like GetSingular Names for
-     the entities and convert to Camel Style (pascal) the names of the fields.
+     the entities and convert the names of the fields to Camel Style (Pascal).
